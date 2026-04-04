@@ -72,7 +72,7 @@ export default function App() {
       <div className="min-h-[100dvh] bg-black flex flex-col items-center justify-center p-4 text-neutral-100">
         <div className="max-w-md w-full space-y-8 text-center">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-white mb-2">SyncRPG</h1>
+            <h1 className="text-4xl font-bold tracking-tight text-white mb-2 font-display">NeuroRPG</h1>
             <p className="text-orange-500">Мобильный ИИ Гейм-мастер</p>
           </div>
           <button
@@ -91,10 +91,10 @@ export default function App() {
       <header className="border-b border-neutral-900 bg-black/80 backdrop-blur-md p-4 flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
           <h1 
-            className="text-lg font-bold text-white tracking-tight cursor-pointer flex items-center gap-2" 
+            className="text-lg font-bold text-white tracking-tight cursor-pointer flex items-center gap-2 font-display" 
             onClick={() => setActiveView('main')}
           >
-            SyncRPG
+            NeuroRPG
           </h1>
           {currentRoomId && activeView === 'main' && (
             <button 
