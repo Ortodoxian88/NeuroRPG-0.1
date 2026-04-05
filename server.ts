@@ -18,7 +18,6 @@ function getAIClient(): GoogleGenAI {
 
 async function generateWithFallback(prompt: string, baseConfig: any) {
   const models = [
-    "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
     "gemini-3.1-flash-lite-preview"
   ];
