@@ -3,13 +3,67 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import path from "path";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: GoogleGenAI | null = null;
+
+function getAIClient(): GoogleGenAI {
+  if (!aiClient) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY environment variable is missing. Please set it in your Render dashboard.");
+    }
+    aiClient = new GoogleGenAI({ apiKey: key });
+  }
+  return aiClient;
+}
+
+async function generateWithFallback(prompt: string, baseConfig: any) {
+  const models = [
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview"
+  ];
+
+  let lastError;
+
+  for (const model of models) {
+    try {
+      console.log(`[AI] Attempting generation with model: ${model}`);
+      const config = { ...baseConfig };
+      
+      // Remove thinkingConfig for lite model as it defaults to MINIMAL and might reject HIGH
+      if (model === "gemini-3.1-flash-lite-preview" && config.thinkingConfig) {
+        delete config.thinkingConfig;
+      }
+
+      const response = await getAIClient().models.generateContent({
+        model: model,
+        contents: prompt,
+        config: config
+      });
+      
+      console.log(`[AI] Successfully generated with ${model}`);
+      return response;
+    } catch (error: any) {
+      console.warn(`[AI] Model ${model} failed: ${error.message || error}`);
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Fix for Firebase Auth popup Cross-Origin-Opener-Policy issues
+  app.use((req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
+    next();
+  });
 
   // API routes FIRST
   app.post("/api/gemini/join", async (req, res) => {
@@ -21,19 +75,15 @@ async function startServer() {
 
 Верни JSON объект с двумя массивами строк: "inventory" и "skills". Названия предметов и навыков должны быть на РУССКОМ языке. Будь краток.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-              skills: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["inventory", "skills"]
-          }
+      const response = await generateWithFallback(prompt, {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
+            skills: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["inventory", "skills"]
         }
       });
 
@@ -84,12 +134,8 @@ ${actionsText}
 \`\`\`
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
-        }
+      const response = await generateWithFallback(prompt, {
+        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
       });
 
       res.json({ text: response.text });
