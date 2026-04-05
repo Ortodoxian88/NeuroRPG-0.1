@@ -17,6 +17,7 @@ type Tab = 'inventory' | 'chat' | 'state';
 
 const COMMANDS = [
   { cmd: '/roll', desc: 'Бросить кубик d20' },
+  { cmd: '/secret', desc: 'Тайное действие: /secret [действие]' },
   { cmd: '/drop', desc: 'Выбросить предмет: /drop [предмет]' },
   { cmd: '/transfer', desc: 'Передать: /transfer [игрок] [предмет]' },
   { cmd: '/eat', desc: 'Съесть/выпить: /eat [предмет]' },
@@ -46,7 +47,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   const generatingTurnRef = useRef<number | null>(null);
   
   const currentUser = auth.currentUser;
-  const isHost = currentUser && room?.hostId === currentUser.uid;
+  const isHost = Boolean(currentUser && room?.hostId === currentUser.uid);
   const me = players.find(p => p.uid === currentUser?.uid);
   const hasJoined = !!me;
 
@@ -182,7 +183,15 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     e.preventDefault();
     if (!currentUser || !actionInput.trim() || !me || me.isReady) return;
     
-    const input = actionInput.trim();
+    let input = actionInput.trim();
+    let isHidden = false;
+    
+    if (input.startsWith('/secret ')) {
+      isHidden = true;
+      input = input.replace('/secret ', '').trim();
+    } else if (input === '/secret') {
+      return;
+    }
     
     if (input === '/roll') {
       await updateDoc(doc(db, 'rooms', roomId), {
@@ -200,9 +209,21 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     
     setIsSubmittingAction(true);
     try {
+      const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
+      await setDoc(msgRef, {
+        role: 'player',
+        playerUid: currentUser.uid,
+        playerName: me.name,
+        content: input,
+        isHidden: isHidden,
+        turn: room.turn,
+        createdAt: serverTimestamp()
+      });
+
       const playerRef = doc(db, 'rooms', roomId, 'players', currentUser.uid);
       await updateDoc(playerRef, {
         action: input,
+        isHiddenAction: isHidden,
         isReady: true
       });
       setActionInput('');
@@ -242,19 +263,17 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       setGenerationError(null);
       await updateDoc(doc(db, 'rooms', roomId), { isGenerating: true });
       
-      const actionsText = players.map(p => `${p.name}: ${p.action || 'бездействует'}`).join('\n');
+      const actionsText = players.map(p => {
+        const actionStr = p.action || 'бездействует';
+        return p.isHiddenAction ? `${p.name} (ТАЙНО): ${actionStr}` : `${p.name}: ${actionStr}`;
+      }).join('\n');
       
-      const actionsMsgRef = doc(collection(db, 'rooms', roomId, 'messages'));
-      await setDoc(actionsMsgRef, {
-        role: 'players',
-        content: actionsText,
-        turn: room.turn,
-        createdAt: serverTimestamp()
-      });
-
       const recentMessages = messages.slice(-15).map(m => {
         if (m.role === 'system') return `Гейм-мастер (Система): ${m.content}`;
         if (m.role === 'ai') return `Гейм-мастер (ИИ): ${m.content}`;
+        if (m.role === 'player') {
+          return m.isHidden ? `${m.playerName} (ТАЙНО): ${m.content}` : `${m.playerName}: ${m.content}`;
+        }
         return `Действия игроков:\n${m.content}`;
       }).join('\n\n');
 
@@ -328,6 +347,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       const updatePromises = players.map(p => 
         updateDoc(doc(db, 'rooms', roomId, 'players', p.uid), {
           action: '',
+          isHiddenAction: false,
           isReady: false
         })
       );
@@ -542,24 +562,56 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
               </div>
             ) : (
               <>
-                {messages.map(msg => (
-                  <div key={msg.id} className={cn(
-                    "rounded-xl p-4 text-sm",
-                    msg.role === 'system' ? "bg-orange-900/10 border border-orange-900/30 text-orange-100" :
-                    msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800 text-neutral-100" :
-                    "bg-neutral-900/50 border border-neutral-800/50 text-neutral-300"
-                  )}>
-                    <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-500">
-                      {msg.role === 'system' ? 'Гейм-мастер (Система)' : 
-                       msg.role === 'ai' ? 'Гейм-мастер (ИИ)' : 'Действия игроков'}
-                      <span className="text-neutral-700">•</span>
-                      <span>Ход {msg.turn}</span>
+                {messages.map(msg => {
+                  if (msg.role === 'player') {
+                    const isMine = msg.playerUid === currentUser?.uid;
+                    
+                    if (msg.isHidden && !isMine) {
+                      return (
+                        <div key={msg.id} className="rounded-xl p-3 text-sm bg-neutral-900/30 border border-neutral-800/30 text-neutral-500 italic flex items-center gap-2">
+                          <span>🔒</span>
+                          <span>{msg.playerName} сделал тайное действие</span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={msg.id} className={cn(
+                        "rounded-xl p-4 text-sm",
+                        isMine ? "bg-orange-900/20 border border-orange-900/30 text-orange-100" : "bg-neutral-800/50 border border-neutral-700/50 text-neutral-200",
+                        msg.isHidden && "border-red-500/30 bg-red-900/20"
+                      )}>
+                        <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-400">
+                          {msg.playerName} 
+                          {msg.isHidden && <span className="text-red-400 font-bold bg-red-500/10 px-2 py-0.5 rounded flex items-center gap-1">🔒 ТАЙНОЕ ДЕЙСТВИЕ</span>}
+                          <span className="text-neutral-700">•</span>
+                          <span>Ход {msg.turn}</span>
+                        </div>
+                        <div className="markdown-body text-sm leading-relaxed">
+                          <Markdown>{msg.content}</Markdown>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div key={msg.id} className={cn(
+                      "rounded-xl p-4 text-sm",
+                      msg.role === 'system' ? "bg-orange-900/10 border border-orange-900/30 text-orange-100" :
+                      msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800 text-neutral-100" :
+                      "bg-neutral-900/50 border border-neutral-800/50 text-neutral-300"
+                    )}>
+                      <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-500">
+                        {msg.role === 'system' ? 'Гейм-мастер (Система)' : 
+                         msg.role === 'ai' ? 'Гейм-мастер (ИИ)' : 'Действия игроков'}
+                        <span className="text-neutral-700">•</span>
+                        <span>Ход {msg.turn}</span>
+                      </div>
+                      <div className="markdown-body text-sm leading-relaxed">
+                        <Markdown>{msg.content}</Markdown>
+                      </div>
                     </div>
-                    <div className="markdown-body text-sm leading-relaxed">
-                      <Markdown>{msg.content}</Markdown>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 
                 {room.isGenerating && (
                   <div className="rounded-xl p-4 bg-neutral-900 border border-neutral-800 text-neutral-100 flex items-center gap-3 text-sm">
