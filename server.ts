@@ -2,6 +2,37 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import path from "path";
+import admin from 'firebase-admin';
+import fs from 'fs';
+
+// Initialize Firebase Admin for token verification
+const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+if (fs.existsSync(firebaseConfigPath)) {
+  const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
+  admin.initializeApp({
+    projectId: config.projectId
+  });
+} else {
+  console.warn("firebase-applet-config.json not found, admin not initialized");
+}
+
+const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+    return;
+  }
+  
+  const token = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    (req as any).user = decodedToken;
+    next();
+  } catch (error) {
+    console.error('Error verifying auth token:', error);
+    res.status(401).json({ error: 'Unauthorized: Invalid token' });
+  }
+};
 
 let aiClient: GoogleGenAI | null = null;
 
@@ -16,12 +47,7 @@ function getAIClient(): GoogleGenAI {
   return aiClient;
 }
 
-async function generateWithFallback(prompt: string, baseConfig: any) {
-  const models = [
-    "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview"
-  ];
-
+async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]) {
   let lastError;
 
   for (const model of models) {
@@ -65,7 +91,7 @@ async function startServer() {
   });
 
   // API routes FIRST
-  app.post("/api/gemini/join", async (req, res) => {
+  app.post("/api/gemini/join", requireAuth, async (req, res) => {
     try {
       const { characterName, characterProfile } = req.body;
       const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь и список навыков/способностей.
@@ -100,7 +126,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/gemini/summarize", async (req, res) => {
+  app.post("/api/gemini/summarize", requireAuth, async (req, res) => {
     try {
       const { currentSummary, recentMessages } = req.body;
       const prompt = `Ты летописец RPG игры. Твоя задача - обновить краткое содержание сюжета.
@@ -120,7 +146,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/gemini/gm", async (req, res) => {
+  app.post("/api/gemini/gm", requireAuth, async (req, res) => {
     try {
       const { playersContext, recentMessages, turn, actionsText } = req.body;
       
@@ -161,7 +187,7 @@ ${actionsText}
 
       const response = await generateWithFallback(prompt, {
         thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
-      });
+      }, ["gemini-3-flash-preview", "gemini-3.1-pro-preview"]);
 
       res.json({ text: response.text });
     } catch (error) {

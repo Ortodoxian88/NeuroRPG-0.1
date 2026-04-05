@@ -44,6 +44,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   const [isRecording, setIsRecording] = useState(false);
   const [showDiceRoll, setShowDiceRoll] = useState<{ player: string, value: number } | null>(null);
   const [typingIndicator, setTypingIndicator] = useState('');
+  const [showJoinForm, setShowJoinForm] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const generatingTurnRef = useRef<number | null>(null);
@@ -78,9 +79,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           .map(m => `${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`)
           .join('\n\n');
 
+        const token = await auth.currentUser?.getIdToken();
         const response = await fetch('/api/gemini/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
           body: JSON.stringify({
             currentSummary: room.storySummary || "",
             recentMessages
@@ -193,9 +198,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     
     setIsJoining(true);
     try {
+      const token = await currentUser.getIdToken();
       const response = await fetch('/api/gemini/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ characterName, characterProfile })
       });
       
@@ -377,9 +386,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         `- ${p.name} (UID: ${p.uid})\n  HP: ${p.hp}/${p.maxHp}, Mana: ${p.mana}/${p.maxMana}\n  Анкета: ${p.profile}\n  Инвентарь: ${p.inventory.join(', ')}\n  Навыки: ${p.skills.join(', ')}`
       ).join('\n\n');
 
+      const token = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/gemini/gm', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           playersContext,
           recentMessages,
@@ -435,7 +448,8 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                 await setDoc(doc(collection(db, 'bestiary')), {
                   title: entry.title,
                   content: entry.content,
-                  discoveredAt: serverTimestamp()
+                  discoveredAt: serverTimestamp(),
+                  discoveredBy: currentUser?.uid || 'unknown'
                 });
               }
             }
@@ -481,10 +495,18 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-neutral-500" /></div>;
   }
 
-  if (!hasJoined && !isHost && room.status === 'lobby') {
+  if ((!hasJoined && !isHost && room.status === 'lobby') || (isHost && showJoinForm && !hasJoined && room.status === 'lobby')) {
     return (
       <div className="flex-1 flex flex-col p-4 overflow-y-auto pb-20">
-        <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
+        <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6 relative">
+          {isHost && (
+            <button 
+              onClick={() => setShowJoinForm(false)}
+              className="absolute top-4 right-4 text-neutral-500 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+          )}
           <div>
             <h2 className="text-xl font-semibold text-white font-display">Создание персонажа</h2>
             <p className="text-sm text-neutral-400 mt-1">Код комнаты: <span className="font-mono text-white">{roomId}</span></p>
@@ -695,12 +717,28 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                 </div>
                 
                 <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-lg p-4 text-left">
-                  <h3 className="text-sm font-medium text-neutral-300 mb-3">Игроки ({players.length})</h3>
+                  <h3 className="text-sm font-medium text-neutral-300 mb-3">В комнате ({players.length + (players.some(p => p.uid === room.hostId) ? 0 : 1)})</h3>
                   <div className="space-y-2">
+                    {!players.some(p => p.uid === room.hostId) && (
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2 text-neutral-400">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="text-neutral-200">Гейм-мастер (Хост)</span>
+                        </div>
+                        {isHost && !hasJoined && (
+                           <button 
+                             onClick={() => setShowJoinForm(true)}
+                             className="text-[10px] bg-orange-600 hover:bg-orange-500 px-2 py-0.5 rounded text-white transition-colors"
+                           >
+                             Присоединиться как игрок
+                           </button>
+                        )}
+                      </div>
+                    )}
                     {players.map(p => (
                       <div key={p.uid} className="flex items-center gap-2 text-sm text-neutral-400">
                         <div className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                        <span className="text-neutral-200">{p.name}</span>
+                        <span className="text-neutral-200">{p.name} {p.uid === room.hostId ? '(Хост)' : ''}</span>
                       </div>
                     ))}
                   </div>
