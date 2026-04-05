@@ -10,7 +10,7 @@ import { auth, db, signInWithGoogle, logout } from './firebase';
 import Lobby from './components/Lobby';
 import RoomView from './components/RoomView';
 import BestiaryView from './components/BestiaryView';
-import { LogOut, BookOpen, Home } from 'lucide-react';
+import { LogOut, BookOpen, Home, DoorOpen } from 'lucide-react';
 import { UserProfile } from './types';
 
 type ViewState = 'main' | 'bestiary';
@@ -115,10 +115,19 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-neutral-400 truncate max-w-[80px]">{user.displayName}</span>
+          {currentRoomId && (
+            <button
+              onClick={handleLeaveRoom}
+              className="p-2 text-neutral-400 hover:text-red-500 transition-colors rounded-full hover:bg-neutral-900"
+              title="Покинуть комнату"
+            >
+              <DoorOpen size={16} />
+            </button>
+          )}
           <button
             onClick={logout}
             className="p-2 text-neutral-400 hover:text-orange-500 transition-colors rounded-full hover:bg-neutral-900"
-            title="Выйти"
+            title="Выйти из аккаунта"
           >
             <LogOut size={16} />
           </button>
