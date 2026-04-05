@@ -33,7 +33,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   
   const [actionInput, setActionInput] = useState('');
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   
@@ -95,13 +95,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   }, [roomId, onLeave]);
 
   useEffect(() => {
-    if (!isHost || !room || room.status !== 'playing' || isGenerating) return;
+    if (!isHost || !room || room.status !== 'playing' || room.isGenerating) return;
     if (players.length > 0 && players.every(p => p.isReady)) {
       if (generatingTurnRef.current === room.turn) return;
       generatingTurnRef.current = room.turn;
       generateAIResponse();
     }
-  }, [players, isHost, room, isGenerating]);
+  }, [players, isHost, room]);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,21 +214,6 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     }
   };
 
-  const handleCancelAction = async () => {
-    if (!currentUser || !me || !me.isReady) return;
-    try {
-      const playerRef = doc(db, 'rooms', roomId, 'players', currentUser.uid);
-      await updateDoc(playerRef, {
-        action: '',
-        isReady: false
-      });
-      setActionInput(me.action); // Restore text so they don't lose it
-      generatingTurnRef.current = null; // Reset turn ref so host can retry
-    } catch (error) {
-      console.error("Error canceling action", error);
-    }
-  };
-
   const handleVoiceInput = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -252,10 +237,12 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
   const generateAIResponse = async () => {
     if (!room) return;
-    setIsGenerating(true);
     
     try {
-      const actionsText = players.map(p => `${p.name}: ${p.action}`).join('\n');
+      setGenerationError(null);
+      await updateDoc(doc(db, 'rooms', roomId), { isGenerating: true });
+      
+      const actionsText = players.map(p => `${p.name}: ${p.action || 'бездействует'}`).join('\n');
       
       const actionsMsgRef = doc(collection(db, 'rooms', roomId, 'messages'));
       await setDoc(actionsMsgRef, {
@@ -347,14 +334,15 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       await Promise.all(updatePromises);
       
       await updateDoc(doc(db, 'rooms', roomId), {
-        turn: nextTurn
+        turn: nextTurn,
+        isGenerating: false
       });
 
     } catch (error) {
       console.error("Error generating AI response", error);
       generatingTurnRef.current = null; // Reset so it can retry if needed
-    } finally {
-      setIsGenerating(false);
+      setGenerationError("Ошибка при генерации ответа. Попробуйте еще раз.");
+      await updateDoc(doc(db, 'rooms', roomId), { isGenerating: false });
     }
   };
 
@@ -563,7 +551,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                   )}>
                     <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-500">
                       {msg.role === 'system' ? 'Гейм-мастер (Система)' : 
-                       msg.role === 'ai' ? 'Гейм-мастер (gemini-3.1-pro-preview)' : 'Действия игроков'}
+                       msg.role === 'ai' ? 'Гейм-мастер (ИИ)' : 'Действия игроков'}
                       <span className="text-neutral-700">•</span>
                       <span>Ход {msg.turn}</span>
                     </div>
@@ -573,10 +561,34 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                   </div>
                 ))}
                 
-                {isGenerating && (
+                {room.isGenerating && (
                   <div className="rounded-xl p-4 bg-neutral-900 border border-neutral-800 text-neutral-100 flex items-center gap-3 text-sm">
                     <Loader2 size={16} className="animate-spin text-orange-500" />
                     <span className="text-neutral-400 animate-pulse">Гейм-мастер думает...</span>
+                  </div>
+                )}
+                
+                {generationError && isHost && (
+                  <div className="rounded-xl p-4 bg-red-900/20 border border-red-900/50 text-red-200 flex flex-col gap-3 text-sm">
+                    <span className="font-medium">{generationError}</span>
+                    <button 
+                      onClick={() => { generatingTurnRef.current = null; generateAIResponse(); }} 
+                      className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg w-fit transition-colors"
+                    >
+                      Повторить попытку
+                    </button>
+                  </div>
+                )}
+                
+                {isHost && !room.isGenerating && players.some(p => p.isReady) && !players.every(p => p.isReady) && (
+                  <div className="flex justify-center py-2">
+                    <button 
+                      onClick={() => { generatingTurnRef.current = room.turn; generateAIResponse(); }}
+                      className="text-xs text-neutral-500 hover:text-orange-400 transition-colors flex items-center gap-1"
+                    >
+                      <Play size={12} />
+                      Форсировать ход (не все готовы)
+                    </button>
                   </div>
                 )}
                 <div ref={messagesEndRef} />
@@ -595,12 +607,6 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                 <Loader2 size={16} className="animate-spin shrink-0" />
                 <span className="truncate">{me.action}</span>
               </div>
-              <button 
-                onClick={handleCancelAction}
-                className="text-orange-500 hover:text-orange-400 px-2 py-1 rounded-md text-xs font-medium shrink-0 bg-orange-500/10 transition-colors"
-              >
-                Отменить
-              </button>
             </div>
           ) : (
             <div className="relative">
@@ -630,7 +636,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                     onChange={handleInputChange}
                     placeholder={`Что делает ${me.name}? (введите / для команд)`}
                     className="w-full bg-neutral-900 border border-neutral-700 rounded-full py-3 pl-4 pr-12 text-sm text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none"
-                    disabled={isSubmittingAction || isGenerating}
+                    disabled={isSubmittingAction || room.isGenerating}
                   />
                   <button
                     type="button"
@@ -639,13 +645,14 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                       "absolute right-2 top-1.5 bottom-1.5 aspect-square flex items-center justify-center rounded-full transition-colors",
                       isRecording ? "text-red-500 bg-red-500/10 animate-pulse" : "text-neutral-400 hover:text-white"
                     )}
+                    disabled={isSubmittingAction || room.isGenerating}
                   >
                     <Mic size={18} />
                   </button>
                 </div>
                 <button
                   type="submit"
-                  disabled={!actionInput.trim() || isSubmittingAction || isGenerating}
+                  disabled={!actionInput.trim() || isSubmittingAction || room.isGenerating}
                   className="w-12 h-12 shrink-0 flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send size={18} />
