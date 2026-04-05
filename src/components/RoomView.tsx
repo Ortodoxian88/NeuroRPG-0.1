@@ -134,6 +134,16 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         isReady: false,
         joinedAt: serverTimestamp()
       });
+
+      if (room && room.status === 'playing') {
+        const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
+        await setDoc(msgRef, {
+          role: 'system',
+          content: `Игрок **${characterName.trim()}** присоединился к игре!`,
+          turn: room.turn,
+          createdAt: serverTimestamp()
+        });
+      }
     } catch (error) {
       console.error("Error joining room", error);
       alert("Не удалось присоединиться к комнате. Попробуйте еще раз.");
