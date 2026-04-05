@@ -12,6 +12,7 @@ export interface Room {
   status: 'lobby' | 'playing';
   quests: string[];
   currentRoll?: { playerUid: string; playerName: string; value: number; timestamp: number } | null;
+  isGenerating?: boolean;
   createdAt: Timestamp;
 }
 
