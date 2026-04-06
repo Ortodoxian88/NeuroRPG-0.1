@@ -146,7 +146,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/gemini/gm", requireAuth, async (req, res) => {
+  app.post("/api/gemini/generate", requireAuth, async (req, res) => {
     try {
       const { playersContext, recentMessages, turn, actionsText } = req.body;
       

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { doc, onSnapshot, collection, query, orderBy, setDoc, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, setDoc, serverTimestamp, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/src/firebase';
 import { Room, Player, Message } from '@/src/types';
 import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X } from 'lucide-react';
@@ -349,6 +349,19 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
     try {
       const token = await auth.currentUser?.getIdToken();
+      
+      const playersContext = players.map(p => 
+        `${p.name} (HP: ${p.hp}/${p.maxHp}, MP: ${p.mana}/${p.maxMana}). Инвентарь: ${p.inventory.join(', ') || 'пусто'}. Навыки: ${p.skills.join(', ') || 'пусто'}`
+      ).join('\n');
+
+      const recentMessages = messages.slice(-15).map(m => 
+        `${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`
+      ).join('\n\n');
+
+      const actionsText = players.filter(p => p.isReady).map(p => 
+        `${p.name}: ${p.action}${p.isHiddenAction ? ' (ТАЙНО)' : ''}`
+      ).join('\n');
+
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: { 
@@ -356,10 +369,10 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ 
-          roomId,
+          playersContext,
+          recentMessages,
           turn: room.turn,
-          scenario: room.scenario,
-          summary: room.storySummary || ""
+          actionsText
         })
       });
 
@@ -367,6 +380,79 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to generate response');
       }
+
+      const data = await response.json();
+      let aiText = data.text;
+      let stateUpdates = null;
+      let bestiaryEntries = null;
+
+      // Extract JSON block if present
+      const jsonMatch = aiText.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        try {
+          const jsonContent = JSON.parse(jsonMatch[1]);
+          stateUpdates = jsonContent.stateUpdates;
+          bestiaryEntries = jsonContent.bestiary;
+          // Remove JSON block from the text shown to players
+          aiText = aiText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
+        } catch (e) {
+          console.error("Failed to parse AI state updates:", e);
+        }
+      }
+
+      // 1. Add AI message
+      const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
+      await setDoc(msgRef, {
+        role: 'ai',
+        content: aiText,
+        turn: room.turn,
+        createdAt: serverTimestamp()
+      });
+
+      // 2. Update player states if AI provided them
+      if (stateUpdates && Array.isArray(stateUpdates)) {
+        for (const update of stateUpdates) {
+          const playerRef = doc(db, 'rooms', roomId, 'players', update.uid);
+          const playerSnap = await getDoc(playerRef);
+          if (playerSnap.exists()) {
+            await updateDoc(playerRef, {
+              hp: typeof update.hp === 'number' ? update.hp : playerSnap.data().hp,
+              mana: typeof update.mana === 'number' ? update.mana : playerSnap.data().mana,
+              inventory: Array.isArray(update.inventory) ? update.inventory : playerSnap.data().inventory,
+              skills: Array.isArray(update.skills) ? update.skills : playerSnap.data().skills,
+            });
+          }
+        }
+      }
+
+      // 3. Add to bestiary if AI provided entries
+      if (bestiaryEntries && Array.isArray(bestiaryEntries)) {
+        for (const entry of bestiaryEntries) {
+          const bestiaryRef = doc(collection(db, 'bestiary'));
+          await setDoc(bestiaryRef, {
+            title: entry.title,
+            content: entry.content,
+            roomId: roomId,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
+      // 4. Reset player readiness and increment turn
+      for (const p of players) {
+        const playerRef = doc(db, 'rooms', roomId, 'players', p.uid);
+        await updateDoc(playerRef, {
+          isReady: false,
+          action: '',
+          isHiddenAction: false
+        });
+      }
+
+      await updateDoc(doc(db, 'rooms', roomId), {
+        turn: room.turn + 1,
+        isGenerating: false
+      });
+
     } catch (error: any) {
       console.error("Error generating AI response:", error);
       setGenerationError(error.message || "Произошла ошибка при генерации ответа ИИ.");
