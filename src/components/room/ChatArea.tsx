@@ -101,6 +101,12 @@ export default function ChatArea({
               <span className="text-neutral-700">•</span>
               <span>Ход {msg.turn}</span>
             </div>
+            {isHost && msg.reasoning && (
+              <div className="mb-4 p-3 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-neutral-400 font-mono">
+                <div className="font-bold text-neutral-500 mb-1">Скрытые рассуждения (только для Хоста):</div>
+                <Markdown>{msg.reasoning}</Markdown>
+              </div>
+            )}
             <div className="markdown-body text-[15px] leading-relaxed prose prose-invert prose-orange max-w-none">
               <Markdown>{msg.content}</Markdown>
             </div>

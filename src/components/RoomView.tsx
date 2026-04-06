@@ -224,6 +224,12 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
         maxHp: 20,
         mana: 10,
         maxMana: 10,
+        stress: 0,
+        alignment: parsed.alignment || 'Нейтральное',
+        injuries: [],
+        statuses: [],
+        mutations: [],
+        reputation: {},
         action: '',
         isReady: false,
         joinedAt: serverTimestamp()
@@ -344,7 +350,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
       const token = await auth.currentUser?.getIdToken();
       
       const playersContext = players.map(p => 
-        `${p.name} (HP: ${p.hp}/${p.maxHp}, MP: ${p.mana}/${p.maxMana}). Инвентарь: ${p.inventory.join(', ') || 'пусто'}. Навыки: ${p.skills.join(', ') || 'пусто'}`
+        `${p.name} (HP: ${p.hp}/${p.maxHp}, MP: ${p.mana}/${p.maxMana}, Стресс: ${p.stress || 0}/100, Мировоззрение: ${p.alignment || 'Нейтральное'}). Инвентарь: ${p.inventory.join(', ') || 'пусто'}. Навыки: ${p.skills.join(', ') || 'пусто'}. Травмы: ${(p.injuries || []).join(', ') || 'нет'}. Состояния: ${(p.statuses || []).join(', ') || 'нет'}. Мутации: ${(p.mutations || []).join(', ') || 'нет'}. Репутация: ${JSON.stringify(p.reputation || {})}`
       ).join('\n');
 
       const recentMessages = messages.slice(-15).map(m => 
@@ -366,7 +372,10 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
           recentMessages,
           turn: room.turn,
           actionsText,
-          currentQuests: room.quests || []
+          currentQuests: room.quests || [],
+          worldState: room.worldState,
+          factions: room.factions,
+          hiddenTimers: room.hiddenTimers
         })
       });
 
@@ -377,15 +386,20 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
 
       const data = await response.json();
       const aiText = data.story;
+      const reasoning = data.reasoning;
       const stateUpdates = data.stateUpdates;
       const bestiaryEntries = data.bestiary;
       const updatedQuests = data.quests;
+      const worldUpdates = data.worldUpdates;
+      const factionUpdates = data.factionUpdates;
+      const hiddenTimersUpdates = data.hiddenTimersUpdates;
 
       // 1. Add AI message
       const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
       await setDoc(msgRef, {
         role: 'ai',
         content: aiText,
+        reasoning: reasoning || null,
         turn: room.turn,
         createdAt: serverTimestamp()
       });
@@ -399,8 +413,14 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
             await updateDoc(playerRef, {
               hp: typeof update.hp === 'number' ? update.hp : playerSnap.data().hp,
               mana: typeof update.mana === 'number' ? update.mana : playerSnap.data().mana,
+              stress: typeof update.stress === 'number' ? update.stress : playerSnap.data().stress,
+              alignment: typeof update.alignment === 'string' ? update.alignment : playerSnap.data().alignment,
               inventory: Array.isArray(update.inventory) ? update.inventory : playerSnap.data().inventory,
               skills: Array.isArray(update.skills) ? update.skills : playerSnap.data().skills,
+              injuries: Array.isArray(update.injuries) ? update.injuries : playerSnap.data().injuries,
+              statuses: Array.isArray(update.statuses) ? update.statuses : playerSnap.data().statuses,
+              mutations: Array.isArray(update.mutations) ? update.mutations : playerSnap.data().mutations,
+              reputation: typeof update.reputation === 'object' ? update.reputation : playerSnap.data().reputation,
             });
           }
         }
@@ -432,7 +452,10 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
       await updateDoc(doc(db, 'rooms', roomId), {
         turn: room.turn + 1,
         isGenerating: false,
-        quests: updatedQuests || room.quests || []
+        quests: updatedQuests || room.quests || [],
+        worldState: worldUpdates || room.worldState || '',
+        factions: factionUpdates || room.factions || {},
+        hiddenTimers: hiddenTimersUpdates || room.hiddenTimers || {}
       });
 
     } catch (error: any) {
@@ -526,6 +549,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
             onKickPlayer={kickPlayer} 
             turn={room.turn}
             storySummary={room.storySummary || ''}
+            room={room}
           />
         )}
 

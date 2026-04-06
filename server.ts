@@ -102,11 +102,11 @@ async function startServer() {
   app.post("/api/gemini/join", requireAuth, async (req, res) => {
     try {
       const { characterName, characterProfile, roomId } = req.body;
-      const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь и список навыков/способностей.
+      const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь, список навыков/способностей и определи его мировоззрение (alignment).
 Имя персонажа: ${characterName}
 Анкета: ${characterProfile}
 
-Верни JSON объект с двумя массивами строк: "inventory" и "skills". Названия предметов и навыков должны быть на РУССКОМ языке. Будь краток.`;
+Верни JSON объект с массивами "inventory" и "skills", а также строку "alignment" (например, "Законопослушный-Добрый", "Хаотично-Злой", "Истинно-Нейтральный"). Названия предметов и навыков должны быть на РУССКОМ языке. Будь краток.`;
 
       const response = await generateWithFallback(prompt, {
         responseMimeType: "application/json",
@@ -114,13 +114,14 @@ async function startServer() {
           type: Type.OBJECT,
           properties: {
             inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-            skills: { type: Type.ARRAY, items: { type: Type.STRING } }
+            skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+            alignment: { type: Type.STRING }
           },
-          required: ["inventory", "skills"]
+          required: ["inventory", "skills", "alignment"]
         }
       });
 
-      let text = response.text || '{"inventory":[], "skills":[]}';
+      let text = response.text || '{"inventory":[], "skills":[], "alignment": "Нейтральное"}';
       const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
       if (match) {
         text = match[1];
@@ -177,34 +178,48 @@ async function startServer() {
 
   app.post("/api/gemini/generate", requireAuth, async (req, res) => {
     try {
-      const { playersContext, recentMessages, turn, actionsText, currentQuests } = req.body;
+      const { playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers } = req.body;
       
       const prompt = `
-Ты опытный ИИ Гейм-мастер для многопользовательской текстовой RPG. Твоя цель - реалистично симулировать мир, управлять NPC и реагировать на действия игроков.
+Ты элитный ИИ-Гейм-мастер для многопользовательской текстовой RPG. Твоя цель - реалистично симулировать мир, управлять NPC и реагировать на действия игроков.
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ.
 
-ИГРОКИ В МИРЕ:
+[КОНТЕКСТ МИРА]
+Текущее состояние мира и экономики: ${worldState || 'Начало игры. Экономика стабильна.'}
+Отношения фракций: ${factions ? JSON.stringify(factions) : '{}'}
+Скрытые таймеры квестов: ${hiddenTimers ? JSON.stringify(hiddenTimers) : '{}'}
+
+[ИГРОКИ В МИРЕ]
 ${playersContext}
 
-НЕДАВНИЙ КОНТЕКСТ ИСТОРИИ:
+[НЕДАВНИЙ КОНТЕКСТ ИСТОРИИ]
 ${recentMessages}
 
 ТЕКУЩИЙ ХОД: ${turn}
 ТЕКУЩИЕ КВЕСТЫ: ${currentQuests ? JSON.stringify(currentQuests) : '[]'}
 
-ИГРОКИ ТОЛЬКО ЧТО ОТПРАВИЛИ ЭТИ ДЕЙСТВИЯ:
+[ДЕЙСТВИЯ ИГРОКОВ В ЭТОМ ХОДУ]
 ${actionsText}
 
-ИНСТРУКЦИИ:
-1. Проанализируй действия КАЖДОГО игрока.
-2. Если игрок бросил кубик (команда /roll), используй результат для определения успеха/провала.
-3. Если действие секретное (команда /secret), опиши его результат так, чтобы другие игроки не поняли деталей, но почувствовали последствия (или вообще не упоминай в общем чате, если это уместно).
-4. Опиши результат действий и новую ситуацию, в которой оказались игроки.
-5. Описывай происходящее ДЕТАЛЬНО, ГЛУБОКО и ХУДОЖЕСТВЕННО. Используй богатый литературный язык. Описывай запахи, звуки, эмоции персонажей, атмосферу и мелкие детали окружения. Сделай так, чтобы игроки почувствовали себя внутри живого мира. Заканчивай ход интригой или новым вызовом.
-6. Если игрок использует команду /drop, /transfer, /eat, обнови его инвентарь в своем понимании и опиши результат.
-7. Обновляй список квестов (добавляй новые, удаляй выполненные). Если квест выполнен, добавь к нему пометку [Выполнено].
-8. Если игроки получили урон или восстановили силы, обнови их HP и Ману.
-9. Если в мире появилось что-то новое (монстр, артефакт, локация), добавь запись в Бестиарий.
+[МЕХАНИКИ И ПРАВИЛА (СТРОГО СОБЛЮДАТЬ)]
+1. Chain-of-Thought: Сначала напиши свои рассуждения в поле "reasoning". Оцени логику, физику магии, укрытия, вес инвентаря, скрытые броски.
+2. Валидация действий и Анти-метагейминг: Пресекай попытки игроков сделать невозможное (godmode) или использовать знания из реального мира. Описывай провал таких действий органично.
+3. Физика и Синергия: Магия взаимодействует с окружением (вода проводит ток, огонь сжигает дерево). Учитывай позиционирование и укрытия.
+4. Экономика и Инфляция: Цены меняются динамически. Обновляй это в "worldUpdates".
+5. Инвентарь: Учитывай логический вес. Нельзя нести 10 мечей.
+6. Состояния и Травмы: Накладывай эффекты (Кровотечение, Отравление) и перманентные травмы (Шрамы, Хромота) при сильном уроне. Обновляй HP/MP/Стресс.
+7. Психологический стресс и Мутации: В страшных ситуациях повышай стресс (0-100). При 100 - психоз. Накладывай скрытые мутации/проклятия.
+8. Мировоззрение и Репутация: Сдвигай мировоззрение (alignment) и репутацию у фракций/NPC в зависимости от поступков.
+9. NPC: NPC могут лгать, обманывать (органично). Генерируй слухи в тавернах. Используй прямую речь от первого лица для важных NPC.
+10. Квесты и Таймеры: Ветвящиеся квесты. Обновляй скрытые таймеры (hiddenTimersUpdates). Если таймер истек - событие происходит.
+11. AI Director и Случайные встречи: Подстраивай сложность. Если скучно - генерируй органичную случайную встречу или загадку.
+12. Моральные дилеммы: Изредка ставь игроков перед сложным выбором без правильного ответа.
+13. Тональность: Анализируй тон чата, но оставайся беспристрастным. Если ситуация критическая, а игроки шутят - мир реагирует серьезно и жестоко.
+14. Адаптивный лексикон: Подстраивай стиль речи под сеттинг (без кринжа).
+
+[ИНСТРУКЦИИ ПО ФОРМАТУ]
+Описывай происходящее ДЕТАЛЬНО, ГЛУБОКО и ХУДОЖЕСТВЕННО. Используй богатый литературный язык.
+Заканчивай ход интригой или новым вызовом.
 `;
 
       const response = await generateWithFallback(prompt, {
@@ -213,7 +228,11 @@ ${actionsText}
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            reasoning: { type: Type.STRING, description: "Скрытые рассуждения ИИ, расчеты, скрытые броски, логика" },
             story: { type: Type.STRING, description: "Художественный текст ответа Гейм-мастера" },
+            worldUpdates: { type: Type.STRING, description: "Обновленное состояние мира и экономики (для компендиума)" },
+            factionUpdates: { type: Type.OBJECT, description: "Обновленные отношения фракций (Ключ: Название, Значение: Описание)" },
+            hiddenTimersUpdates: { type: Type.OBJECT, description: "Обновленные таймеры (Ключ: Название события, Значение: Ходов осталось)" },
             stateUpdates: {
               type: Type.ARRAY,
               items: {
@@ -222,10 +241,16 @@ ${actionsText}
                   uid: { type: Type.STRING },
                   hp: { type: Type.NUMBER },
                   mana: { type: Type.NUMBER },
+                  stress: { type: Type.NUMBER },
+                  alignment: { type: Type.STRING },
                   inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  skills: { type: Type.ARRAY, items: { type: Type.STRING } }
+                  skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  injuries: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  statuses: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  mutations: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  reputation: { type: Type.OBJECT, description: "Репутация у фракций/NPC (Ключ: Имя, Значение: Число от -100 до 100)" }
                 },
-                required: ["uid", "hp", "mana", "inventory", "skills"]
+                required: ["uid", "hp", "mana", "stress", "inventory", "skills", "injuries", "statuses", "mutations"]
               }
             },
             bestiary: {
@@ -245,7 +270,7 @@ ${actionsText}
               description: "Актуальный список активных квестов"
             }
           },
-          required: ["story", "stateUpdates", "bestiary", "quests"]
+          required: ["reasoning", "story", "stateUpdates", "bestiary", "quests"]
         }
       }, ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]);
 

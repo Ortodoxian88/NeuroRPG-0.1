@@ -1,6 +1,6 @@
 import React from 'react';
-import { Sparkles, Download, UserMinus } from 'lucide-react';
-import { Player } from '@/src/types';
+import { Sparkles, Download, UserMinus, Globe, Shield, Clock } from 'lucide-react';
+import { Player, Room } from '@/src/types';
 
 interface StateTabProps {
   me: Player | undefined;
@@ -11,6 +11,7 @@ interface StateTabProps {
   onKickPlayer: (uid: string) => void;
   turn: number;
   storySummary: string;
+  room: Room;
 }
 
 export default function StateTab({
@@ -21,7 +22,8 @@ export default function StateTab({
   onExportLog,
   onKickPlayer,
   turn,
-  storySummary
+  storySummary,
+  room
 }: StateTabProps) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -47,6 +49,49 @@ export default function StateTab({
           </div>
         )}
       </div>
+
+      {room.worldState && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-2">
+          <h3 className="text-sm font-medium text-neutral-300 flex items-center gap-2 mb-2">
+            <Globe size={16} className="text-blue-400" /> Компендиум мира
+          </h3>
+          <p className="text-xs text-neutral-400 leading-relaxed whitespace-pre-wrap">
+            {room.worldState}
+          </p>
+        </div>
+      )}
+
+      {isHost && room.factions && Object.keys(room.factions).length > 0 && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-2">
+          <h3 className="text-sm font-medium text-neutral-300 flex items-center gap-2 mb-2">
+            <Shield size={16} className="text-purple-400" /> Фракции (Скрыто)
+          </h3>
+          <div className="space-y-2">
+            {Object.entries(room.factions).map(([faction, desc], i) => (
+              <div key={i} className="text-xs">
+                <span className="font-bold text-neutral-300">{faction}: </span>
+                <span className="text-neutral-500">{desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isHost && room.hiddenTimers && Object.keys(room.hiddenTimers).length > 0 && (
+        <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-2">
+          <h3 className="text-sm font-medium text-neutral-300 flex items-center gap-2 mb-2">
+            <Clock size={16} className="text-red-400" /> Скрытые таймеры
+          </h3>
+          <div className="space-y-2">
+            {Object.entries(room.hiddenTimers).map(([event, turns], i) => (
+              <div key={i} className="flex justify-between text-xs">
+                <span className="text-neutral-400">{event}</span>
+                <span className="font-mono text-red-400">{turns} ходов</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isSpectator ? (
         <div className="space-y-4">
@@ -81,6 +126,75 @@ export default function StateTab({
               <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
                 <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, ((me?.mana || 0) / (me?.maxMana || 1)) * 100))}%` }} />
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-purple-400 font-medium">Стресс</span>
+                <span className="text-neutral-300">{me?.stress || 0} / 100</span>
+              </div>
+              <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, me?.stress || 0))}%` }} />
+              </div>
+            </div>
+            
+            <div className="flex justify-between text-sm pt-2 border-t border-neutral-800/50">
+              <span className="text-neutral-400">Мировоззрение:</span>
+              <span className="text-orange-400 font-medium">{me?.alignment || 'Нейтральное'}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Состояния</h3>
+              {(!me?.statuses || me.statuses.length === 0) ? (
+                <p className="text-neutral-600 text-xs italic">Нет активных состояний</p>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {me.statuses.map((status, i) => (
+                    <span key={i} className="text-[10px] bg-red-900/30 text-red-400 px-2 py-1 rounded border border-red-900/50">{status}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Травмы</h3>
+              {(!me?.injuries || me.injuries.length === 0) ? (
+                <p className="text-neutral-600 text-xs italic">Нет травм</p>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {me.injuries.map((injury, i) => (
+                    <span key={i} className="text-[10px] bg-orange-900/30 text-orange-400 px-2 py-1 rounded border border-orange-900/50">{injury}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Мутации</h3>
+              {(!me?.mutations || me.mutations.length === 0) ? (
+                <p className="text-neutral-600 text-xs italic">Нет мутаций</p>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {me.mutations.map((mutation, i) => (
+                    <span key={i} className="text-[10px] bg-green-900/30 text-green-400 px-2 py-1 rounded border border-green-900/50">{mutation}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-neutral-400 mb-2 uppercase tracking-wider">Репутация</h3>
+              {(!me?.reputation || Object.keys(me.reputation).length === 0) ? (
+                <p className="text-neutral-600 text-xs italic">Нет данных</p>
+              ) : (
+                <div className="space-y-1">
+                  {Object.entries(me.reputation).map(([faction, value], i) => (
+                    <div key={i} className="flex justify-between text-[10px]">
+                      <span className="text-neutral-400">{faction}:</span>
+                      <span className={value > 0 ? 'text-green-400' : value < 0 ? 'text-red-400' : 'text-neutral-500'}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

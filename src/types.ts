@@ -15,6 +15,9 @@ export interface Room {
   isGenerating?: boolean;
   storySummary?: string;
   lastSummaryTurn?: number;
+  worldState?: string; // Dynamic compendium/economy state
+  factions?: Record<string, string>; // Faction relations and status
+  hiddenTimers?: Record<string, number>; // Quest timers (e.g., "Save hostage": 3 turns left)
   createdAt: Timestamp;
 }
 
@@ -28,6 +31,12 @@ export interface Player {
   maxHp: number;
   mana: number;
   maxMana: number;
+  stress?: number; // 0-100 psychological stress
+  alignment?: string; // e.g., "Хаотично-Добрый"
+  injuries?: string[]; // Permanent or semi-permanent injuries
+  statuses?: string[]; // Temporary effects (Poisoned, Bleeding, Buffed)
+  mutations?: string[]; // Hidden or visible curses/mutations
+  reputation?: Record<string, number>; // Faction/NPC standing (-100 to 100)
   action: string;
   isHiddenAction?: boolean;
   isReady: boolean;
@@ -38,6 +47,7 @@ export interface Message {
   id: string;
   role: 'system' | 'ai' | 'players' | 'player';
   content: string;
+  reasoning?: string;
   playerName?: string;
   playerUid?: string;
   isHidden?: boolean;
