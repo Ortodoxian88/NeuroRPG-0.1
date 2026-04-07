@@ -1,14 +1,25 @@
 import React from 'react';
 import { ScrollText, CheckCircle2, Circle } from 'lucide-react';
+import { AppSettings } from '@/src/types';
+import { cn } from '@/src/lib/utils';
 
 interface QuestTabProps {
   quests: string[];
+  appSettings?: AppSettings;
 }
 
-export default function QuestTab({ quests }: QuestTabProps) {
+export default function QuestTab({ quests, appSettings }: QuestTabProps) {
+  const isLight = appSettings?.theme === 'light';
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 bg-black">
-      <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2 font-display">
+    <div className={cn(
+      "flex-1 overflow-y-auto p-4",
+      isLight ? "bg-neutral-50" : "bg-black"
+    )}>
+      <h2 className={cn(
+        "text-xl font-bold mb-6 flex items-center gap-2 font-display",
+        isLight ? "text-neutral-900" : "text-white"
+      )}>
         <ScrollText className="text-orange-500" />
         Журнал заданий
       </h2>
@@ -28,7 +39,12 @@ export default function QuestTab({ quests }: QuestTabProps) {
             return (
               <div 
                 key={index} 
-                className={`p-4 rounded-xl border ${isCompleted ? 'bg-neutral-900/50 border-neutral-800' : 'bg-neutral-900 border-orange-500/30'}`}
+                className={cn(
+                  "p-4 rounded-xl border transition-all",
+                  isCompleted 
+                    ? (isLight ? "bg-neutral-100 border-neutral-200" : "bg-neutral-900/50 border-neutral-800") 
+                    : (isLight ? "bg-white border-orange-500/30 shadow-sm" : "bg-neutral-900 border-orange-500/30")
+                )}
               >
                 <div className="flex items-start gap-3">
                   {isCompleted ? (
@@ -36,7 +52,10 @@ export default function QuestTab({ quests }: QuestTabProps) {
                   ) : (
                     <Circle className="text-orange-500 shrink-0 mt-0.5" size={20} />
                   )}
-                  <p className={`text-base ${isCompleted ? 'text-neutral-500 line-through' : 'text-neutral-200'}`}>
+                  <p className={cn(
+                    "text-base",
+                    isCompleted ? "text-neutral-500 line-through" : (isLight ? "text-neutral-800" : "text-neutral-200")
+                  )}>
                     {cleanQuest}
                   </p>
                 </div>

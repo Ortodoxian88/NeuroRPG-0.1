@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot, updateDoc, documentId } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { AppSettings } from '../types';
+import { cn } from '../lib/utils';
 import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut } from 'lucide-react';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
   onOpenSettings: () => void;
   onOpenReport: () => void;
+  appSettings: AppSettings;
 }
 
 interface ActiveRoom {
@@ -16,7 +19,7 @@ interface ActiveRoom {
   status: string;
 }
 
-export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport }: LobbyProps) {
+export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, appSettings }: LobbyProps) {
   const [joinCode, setJoinCode] = useState('');
   const [scenario, setScenario] = useState('Вы очнулись в темной, сырой пещере. Вы не помните, как сюда попали. Вдалеке мерцает тусклый свет.');
   const [isCreating, setIsCreating] = useState(false);
@@ -135,117 +138,172 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport }: 
   };
 
   return (
-    <div className="flex-1 flex flex-col p-4 overflow-y-auto bg-black">
-      <div className="w-full space-y-6 pb-20">
-        
-        {/* Active Sessions Section */}
-        {activeRooms.length > 0 && (
-          <div className="w-full space-y-3">
-            <h2 className="text-base font-bold text-neutral-400 flex items-center gap-2 uppercase tracking-widest">
-              <PlayCircle size={20} className="text-orange-500" />
-              Активные сессии
-            </h2>
-            <div className="grid gap-2">
-              {activeRooms.map(room => (
-                <button
-                  key={room.id}
-                  onClick={() => handleSwitchRoom(room.id)}
-                  className="w-full bg-neutral-900/50 border border-neutral-800 hover:border-orange-500/50 p-3 rounded-2xl text-left transition-all group"
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded font-bold">
-                      {room.id}
-                    </span>
-                    {room.hostId === auth.currentUser?.uid && (
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded font-bold uppercase tracking-tighter">
-                        ГМ
-                      </span>
+    <div className={cn(
+      "flex-1 flex flex-col overflow-hidden relative h-full",
+      appSettings.theme === 'light' ? "bg-neutral-50" : "bg-black"
+    )}>
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="w-full space-y-6 pb-6">
+          
+          {/* Active Sessions Section */}
+          {activeRooms.length > 0 && (
+            <div className="w-full space-y-3">
+              <h2 className={cn(
+                "text-base font-bold flex items-center gap-2 uppercase tracking-widest",
+                appSettings.theme === 'light' ? "text-neutral-500" : "text-neutral-400"
+              )}>
+                <PlayCircle size={20} className="text-orange-500" />
+                Активные сессии
+              </h2>
+              <div className="grid gap-2">
+                {activeRooms.map(room => (
+                  <button
+                    key={room.id}
+                    onClick={() => handleSwitchRoom(room.id)}
+                    className={cn(
+                      "w-full border p-3 rounded-2xl text-left transition-all group",
+                      appSettings.theme === 'light' 
+                        ? "bg-white border-neutral-200 hover:border-orange-500/50 shadow-sm" 
+                        : "bg-neutral-900/50 border-neutral-800 hover:border-orange-500/50"
                     )}
-                  </div>
-                  <p className="text-sm text-neutral-400 line-clamp-2 italic">
-                    "{room.scenario}"
-                  </p>
-                </button>
-              ))}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded font-bold">
+                        {room.id}
+                      </span>
+                      {room.hostId === auth.currentUser?.uid && (
+                        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded font-bold uppercase tracking-tighter">
+                          ГМ
+                        </span>
+                      )}
+                    </div>
+                    <p className={cn(
+                      "text-sm line-clamp-2 italic",
+                      appSettings.theme === 'light' ? "text-neutral-600" : "text-neutral-400"
+                    )}>
+                      "{room.scenario}"
+                    </p>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        
-        <div className="grid grid-cols-1 gap-4">
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-3xl p-6 space-y-5">
-            <h2 className="text-base font-bold text-white flex items-center gap-2 uppercase tracking-widest">
-              <Plus size={24} className="text-orange-500" />
-              Новая игра
-            </h2>
-            <textarea
-              value={scenario}
-              onChange={(e) => setScenario(e.target.value)}
-              rows={4}
-              className="w-full bg-black border border-neutral-800 rounded-2xl p-4 text-base text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none resize-none"
-              placeholder="Опишите стартовую ситуацию..."
-            />
-            <button
-              onClick={handleCreateRoom}
-              disabled={isCreating || !scenario.trim()}
-              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base"
-            >
-              {isCreating ? 'Создание...' : 'Создать комнату'}
-            </button>
-          </div>
-
-          <div className="bg-neutral-900/50 border border-neutral-800 rounded-3xl p-6 space-y-5">
-            <h2 className="text-base font-bold text-white flex items-center gap-2 uppercase tracking-widest">
-              <LogIn size={24} className="text-orange-500" />
-              Присоединиться
-            </h2>
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                className="flex-1 min-w-0 bg-black border border-neutral-800 rounded-2xl p-4 text-base text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none uppercase tracking-widest font-mono"
-                placeholder="КОД"
-                maxLength={6}
+          )}
+          
+          <div className="grid grid-cols-1 gap-4">
+            <div className={cn(
+              "border rounded-3xl p-6 space-y-5",
+              appSettings.theme === 'light' ? "bg-white border-neutral-200 shadow-sm" : "bg-neutral-900/50 border-neutral-800"
+            )}>
+              <h2 className={cn(
+                "text-base font-bold flex items-center gap-2 uppercase tracking-widest",
+                appSettings.theme === 'light' ? "text-neutral-900" : "text-white"
+              )}>
+                <Plus size={24} className="text-orange-500" />
+                Новая игра
+              </h2>
+              <textarea
+                value={scenario}
+                onChange={(e) => setScenario(e.target.value)}
+                rows={4}
+                className={cn(
+                  "w-full border rounded-2xl p-4 text-base focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none resize-none transition-all",
+                  appSettings.theme === 'light' ? "bg-neutral-50 border-neutral-200 text-neutral-900" : "bg-black border-neutral-800 text-neutral-100"
+                )}
+                placeholder="Опишите стартовую ситуацию..."
               />
               <button
-                onClick={handleJoinRoom}
-                disabled={!joinCode.trim()}
-                className="bg-neutral-800 hover:bg-neutral-700 text-white font-bold px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shrink-0"
+                onClick={handleCreateRoom}
+                disabled={isCreating || !scenario.trim()}
+                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shadow-lg shadow-orange-600/20"
               >
-                Войти
+                {isCreating ? 'Создание...' : 'Создать комнату'}
               </button>
             </div>
-          </div>
-        </div>
 
-        <button
-          onClick={onOpenBestiary}
-          className="w-full bg-neutral-900/50 border border-neutral-800 hover:bg-neutral-800 text-white font-bold py-5 px-4 rounded-3xl transition-all active:scale-95 flex items-center justify-center gap-3 text-base uppercase tracking-widest"
-        >
-          <BookOpen size={24} className="text-orange-500" />
-          Бестиарий
-        </button>
+            <div className={cn(
+              "border rounded-3xl p-6 space-y-5",
+              appSettings.theme === 'light' ? "bg-white border-neutral-200 shadow-sm" : "bg-neutral-900/50 border-neutral-800"
+            )}>
+              <h2 className={cn(
+                "text-base font-bold flex items-center gap-2 uppercase tracking-widest",
+                appSettings.theme === 'light' ? "text-neutral-900" : "text-white"
+              )}>
+                <LogIn size={24} className="text-orange-500" />
+                Присоединиться
+              </h2>
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  className={cn(
+                    "flex-1 min-w-0 border rounded-2xl p-4 text-base focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none uppercase tracking-widest font-mono transition-all",
+                    appSettings.theme === 'light' ? "bg-neutral-50 border-neutral-200 text-neutral-900" : "bg-black border-neutral-800 text-neutral-100"
+                  )}
+                  placeholder="КОД"
+                  maxLength={6}
+                />
+                <button
+                  onClick={handleJoinRoom}
+                  disabled={!joinCode.trim()}
+                  className={cn(
+                    "font-bold px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shrink-0",
+                    appSettings.theme === 'light' ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-900" : "bg-neutral-800 hover:bg-neutral-700 text-white"
+                  )}
+                >
+                  Войти
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={onOpenBestiary}
+            className={cn(
+              "w-full border font-bold py-5 px-4 rounded-3xl transition-all active:scale-95 flex items-center justify-center gap-3 text-base uppercase tracking-widest",
+              appSettings.theme === 'light' 
+                ? "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-900 shadow-sm" 
+                : "bg-neutral-900/50 border-neutral-800 hover:bg-neutral-800 text-white"
+            )}
+          >
+            <BookOpen size={24} className="text-orange-500" />
+            Бестиарий
+          </button>
+        </div>
       </div>
 
-      {/* Footer Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 pb-safe bg-black/90 backdrop-blur-md border-t border-neutral-900 flex justify-around items-center z-20">
+      {/* Footer Navigation - Fixed at the bottom */}
+      <div className={cn(
+        "shrink-0 p-4 pb-safe backdrop-blur-md border-t flex justify-around items-center z-20",
+        appSettings.theme === 'light' ? "bg-white/90 border-neutral-200" : "bg-black/90 border-neutral-900"
+      )}>
         <button 
           onClick={onOpenReport}
-          className="flex flex-col items-center gap-1.5 text-neutral-500 hover:text-white transition-colors p-2"
+          className={cn(
+            "flex flex-col items-center gap-1.5 transition-colors p-2",
+            appSettings.theme === 'light' ? "text-neutral-400 hover:text-neutral-900" : "text-neutral-500 hover:text-white"
+          )}
         >
           <Bug size={24} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Баги</span>
         </button>
         <button 
           onClick={onOpenSettings}
-          className="flex flex-col items-center gap-1.5 text-neutral-500 hover:text-white transition-colors p-2"
+          className={cn(
+            "flex flex-col items-center gap-1.5 transition-colors p-2",
+            appSettings.theme === 'light' ? "text-neutral-400 hover:text-neutral-900" : "text-neutral-500 hover:text-white"
+          )}
         >
           <Settings size={24} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Опции</span>
         </button>
         <button 
           onClick={handleLogout}
-          className="flex flex-col items-center gap-1.5 text-neutral-500 hover:text-red-400 transition-colors p-2"
+          className={cn(
+            "flex flex-col items-center gap-1.5 transition-colors p-2",
+            appSettings.theme === 'light' ? "text-neutral-400 hover:text-red-500" : "text-neutral-500 hover:text-red-400"
+          )}
         >
           <LogOut size={24} />
           <span className="text-[10px] font-bold uppercase tracking-tighter">Выход</span>

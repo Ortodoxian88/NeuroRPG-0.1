@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Message, ChatSettings } from '@/src/types';
+import { Message, ChatSettings, AppSettings } from '@/src/types';
 import { Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { cn } from '@/src/lib/utils';
@@ -17,6 +17,7 @@ interface ChatAreaProps {
   playersCount: number;
   readyPlayersCount: number;
   chatSettings?: ChatSettings;
+  appSettings?: AppSettings;
 }
 
 const TypewriterContent = ({ content, speed, onComplete }: { content: string, speed: number, onComplete?: () => void }) => {
@@ -63,7 +64,8 @@ export default function ChatArea({
   onForceTurn,
   playersCount,
   readyPlayersCount,
-  chatSettings
+  chatSettings,
+  appSettings
 }: ChatAreaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastMessageCount = useRef(messages.length);
@@ -121,12 +123,12 @@ export default function ChatArea({
   };
 
   const getAiTextColorClass = () => {
-    if (!chatSettings) return 'text-neutral-100';
+    if (!chatSettings) return appSettings?.theme === 'light' ? 'text-neutral-900' : 'text-neutral-100';
     switch (chatSettings.aiTextColor) {
-      case 'gold': return 'text-yellow-200';
-      case 'purple': return 'text-purple-200';
-      case 'green': return 'text-green-200';
-      default: return 'text-neutral-100';
+      case 'gold': return 'text-yellow-600 dark:text-yellow-200';
+      case 'purple': return 'text-purple-600 dark:text-purple-200';
+      case 'green': return 'text-green-600 dark:text-green-200';
+      default: return appSettings?.theme === 'light' ? 'text-neutral-900' : 'text-neutral-100';
     }
   };
   
@@ -137,7 +139,7 @@ export default function ChatArea({
     let highlighted = content;
     keywords.forEach(kw => {
       const regex = new RegExp(`(${kw})`, 'gi');
-      highlighted = highlighted.replace(regex, '<span class="text-orange-400 font-bold">$1</span>');
+      highlighted = highlighted.replace(regex, '<span class="text-orange-500 font-bold">$1</span>');
     });
     return highlighted;
   };
@@ -152,12 +154,12 @@ export default function ChatArea({
   };
 
   const getShadowClass = () => {
-    if (!chatSettings) return 'shadow-lg';
+    if (!chatSettings) return appSettings?.theme === 'light' ? 'shadow-sm' : 'shadow-lg';
     switch (chatSettings.shadowIntensity) {
       case 'none': return 'shadow-none';
       case 'sm': return 'shadow-sm';
       case 'lg': return 'shadow-xl';
-      default: return 'shadow-lg';
+      default: return appSettings?.theme === 'light' ? 'shadow-sm' : 'shadow-lg';
     }
   };
 
@@ -180,8 +182,8 @@ export default function ChatArea({
   };
 
   const getPlayerColor = (uid: string) => {
-    if (chatSettings?.playerColors === false) return 'text-neutral-400';
-    const colors = ['text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400', 'text-pink-400', 'text-indigo-400', 'text-teal-400'];
+    if (chatSettings?.playerColors === false) return 'text-neutral-500';
+    const colors = ['text-blue-500', 'text-green-500', 'text-yellow-600', 'text-purple-500', 'text-pink-500', 'text-indigo-500', 'text-teal-500'];
     let hash = 0;
     for (let i = 0; i < uid.length; i++) {
       hash = uid.charCodeAt(i) + ((hash << 5) - hash);
@@ -208,7 +210,8 @@ export default function ChatArea({
         getSizeClass(),
         getAlignClass(),
         getLineHeightClass(),
-        getTrackingClass()
+        getTrackingClass(),
+        appSettings?.theme === 'light' ? "bg-neutral-50" : "bg-black"
       )}
     >
       {messages.map(msg => {
@@ -216,7 +219,10 @@ export default function ChatArea({
           if (chatSettings?.hideSystemMessages) return null;
           return (
             <div key={msg.id} className="flex justify-center my-2">
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-2 text-xs font-medium text-orange-200/70 flex items-center gap-2 tracking-wide uppercase">
+              <div className={cn(
+                "border rounded-full px-4 py-2 text-xs font-medium flex items-center gap-2 tracking-wide uppercase",
+                appSettings?.theme === 'light' ? "bg-orange-50 border-orange-100 text-orange-600" : "bg-orange-500/10 border border-orange-500/20 text-orange-200/70"
+              )}>
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
                 {msg.content}
               </div>
@@ -237,8 +243,9 @@ export default function ChatArea({
           if (msg.isHidden && !isMine && !isHost) {
             return (
               <div key={msg.id} className={cn(
-                "p-3 text-sm text-neutral-500 italic flex items-center gap-2 transition-opacity duration-500",
-                !isPlain && "bg-neutral-900/30 border border-neutral-800/30 rounded-xl",
+                "p-3 text-sm italic flex items-center gap-2 transition-opacity duration-500",
+                appSettings?.theme === 'light' ? "text-neutral-400" : "text-neutral-500",
+                !isPlain && (appSettings?.theme === 'light' ? "bg-white border border-neutral-200 rounded-xl shadow-sm" : "bg-neutral-900/30 border border-neutral-800/30 rounded-xl"),
                 !isFocused && "opacity-30 grayscale"
               )}>
                 <span>🔒</span>
@@ -251,20 +258,27 @@ export default function ChatArea({
               isCompact ? "p-2" : "p-4",
               !isPlain && getBorderStyleClass(),
               !isPlain && getShadowClass(),
-              !isPlain && (isMine ? "bg-orange-900/20 border border-orange-900/30 text-orange-100" : "bg-neutral-800/50 border border-neutral-700/50 text-neutral-200"),
+              !isPlain && (
+                isMine 
+                  ? (appSettings?.theme === 'light' ? "bg-orange-50 border border-orange-100 text-neutral-900" : "bg-orange-900/20 border border-orange-900/30 text-orange-100") 
+                  : (appSettings?.theme === 'light' ? "bg-white border border-neutral-200 text-neutral-900" : "bg-neutral-800/50 border border-neutral-700/50 text-neutral-200")
+              ),
               !isPlain && msg.isHidden && "border-red-500/30 bg-red-900/20",
-              isPlain && "border-b border-neutral-800/50 pb-4",
+              isPlain && (appSettings?.theme === 'light' ? "border-b border-neutral-200 pb-4" : "border-b border-neutral-800/50 pb-4"),
               "transition-opacity duration-500",
               !isFocused && "opacity-30 grayscale"
             )}>
-              <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-400">
+              <div className={cn(
+                "text-xs uppercase tracking-wider mb-2 flex items-center gap-2",
+                appSettings?.theme === 'light' ? "text-neutral-500" : "text-neutral-400"
+              )}>
                 {showAvatar && (
-                  <div className={cn("rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center font-bold shrink-0", getAvatarSizeClass(), getPlayerColor(msg.playerUid || ''))}>
+                  <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0 border", getAvatarSizeClass(), getPlayerColor(msg.playerUid || ''), appSettings?.theme === 'light' ? "bg-neutral-50 border-neutral-200" : "bg-neutral-800 border-neutral-700")}>
                     {msg.playerName?.charAt(0) || '?'}
                   </div>
                 )}
                 <span className={cn(chatSettings?.boldNames !== false && "font-bold", getPlayerColor(msg.playerUid || ''))}>{msg.playerName}</span>
-                {msg.isHidden && <span className="text-red-400 font-bold bg-red-500/10 px-2 py-0.5 rounded flex items-center gap-1">🔒 ТАЙНОЕ ДЕЙСТВИЕ</span>}
+                {msg.isHidden && <span className="text-red-500 font-bold bg-red-500/10 px-2 py-0.5 rounded flex items-center gap-1">🔒 ТАЙНОЕ ДЕЙСТВИЕ</span>}
                 <span className="text-neutral-700">•</span>
                 <span>Ход {msg.turn}</span>
                 {showTime && (
@@ -276,7 +290,8 @@ export default function ChatArea({
               </div>
               <div className={cn(
                 "markdown-body",
-                chatSettings?.italicActions && "italic text-neutral-300",
+                chatSettings?.italicActions && "italic",
+                appSettings?.theme === 'light' ? "text-neutral-600" : "text-neutral-300",
                 chatSettings?.autoCapitalize && "first-letter:uppercase"
               )}>
                 {chatSettings?.enableMarkdown === false ? (
@@ -297,15 +312,22 @@ export default function ChatArea({
             isCompact ? "p-3" : "p-5",
             !isPlain && getBorderStyleClass(),
             !isPlain && getShadowClass(),
-            !isPlain && (msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800" : "bg-neutral-900/50 border border-neutral-800/50"),
-            isPlain && "border-b border-neutral-800/50 pb-4",
-            msg.role === 'ai' ? getAiTextColorClass() : "text-neutral-300",
+            !isPlain && (
+              msg.role === 'ai' 
+                ? (appSettings?.theme === 'light' ? "bg-white border border-neutral-200" : "bg-neutral-900 border border-neutral-800") 
+                : (appSettings?.theme === 'light' ? "bg-neutral-100/50 border border-neutral-200" : "bg-neutral-900/50 border border-neutral-800/50")
+            ),
+            isPlain && (appSettings?.theme === 'light' ? "border-b border-neutral-200 pb-4" : "border-b border-neutral-800/50 pb-4"),
+            msg.role === 'ai' ? getAiTextColorClass() : (appSettings?.theme === 'light' ? "text-neutral-700" : "text-neutral-300"),
             "transition-opacity duration-500",
             !isFocused && "opacity-30 grayscale"
           )}>
-            <div className="text-xs font-bold uppercase tracking-[0.2em] mb-3 flex items-center gap-2 text-neutral-500 border-b border-neutral-800 pb-2">
+            <div className={cn(
+              "text-xs font-bold uppercase tracking-[0.2em] mb-3 flex items-center gap-2 border-b pb-2",
+              appSettings?.theme === 'light' ? "text-neutral-400 border-neutral-100" : "text-neutral-500 border-neutral-800"
+            )}>
               {showAvatar && msg.role === 'ai' && (
-                <div className={cn("rounded-full bg-orange-900/30 border border-orange-500/30 flex items-center justify-center font-bold shrink-0 text-orange-500", getAvatarSizeClass())}>
+                <div className={cn("rounded-full flex items-center justify-center font-bold shrink-0 border", getAvatarSizeClass(), appSettings?.theme === 'light' ? "bg-orange-50 border-orange-200 text-orange-600" : "bg-orange-900/30 border border-orange-500/30 text-orange-500")}>
                   GM
                 </div>
               )}
@@ -320,13 +342,17 @@ export default function ChatArea({
               )}
             </div>
             {isHost && msg.reasoning && (
-              <div className="mb-4 p-3 bg-neutral-950 border border-neutral-800 rounded-lg text-xs text-neutral-400 font-mono">
+              <div className={cn(
+                "mb-4 p-3 border rounded-lg text-xs font-mono",
+                appSettings?.theme === 'light' ? "bg-neutral-50 border-neutral-200 text-neutral-500" : "bg-neutral-950 border border-neutral-800 text-neutral-400"
+              )}>
                 <div className="font-bold text-neutral-500 mb-1">Скрытые рассуждения (только для Хоста):</div>
                 <Markdown>{msg.reasoning}</Markdown>
               </div>
             )}
             <div className={cn(
-              "markdown-body prose prose-invert prose-orange max-w-none",
+              "markdown-body prose prose-orange max-w-none",
+              appSettings?.theme === 'light' ? "prose-neutral" : "prose-invert",
               chatSettings?.autoCapitalize && "first-letter:uppercase"
             )}>
               {isLast && msg.role === 'ai' && chatSettings?.typewriterSpeed && chatSettings.typewriterSpeed > 0 ? (
@@ -342,7 +368,10 @@ export default function ChatArea({
       })}
       
       {isGenerating && (
-        <div className="rounded-xl p-4 bg-neutral-900 border border-neutral-800 text-neutral-100 flex items-center gap-3 text-sm">
+        <div className={cn(
+          "rounded-xl p-4 border flex items-center gap-3 text-sm",
+          appSettings?.theme === 'light' ? "bg-white border-neutral-200 text-neutral-900 shadow-sm" : "bg-neutral-900 border border-neutral-800 text-neutral-100"
+        )}>
           <Loader2 size={16} className="animate-spin text-orange-500" />
           <span className="text-neutral-400 animate-pulse">{typingIndicator || "Гейм-мастер думает..."}</span>
         </div>

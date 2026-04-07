@@ -544,14 +544,17 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   }
 
   return (
-    <div className="flex-1 flex flex-col relative bg-black overflow-hidden">
+    <div className={cn(
+      "flex-1 flex flex-col relative overflow-hidden",
+      appSettings?.theme === 'light' ? "bg-neutral-50" : "bg-black"
+    )}>
       
       <DiceOverlay showDiceRoll={showDiceRoll} />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {activeTab === 'inventory' && (
-          <InventoryTab me={me} isSpectator={isSpectator} />
+          <InventoryTab me={me} isSpectator={isSpectator} appSettings={appSettings} />
         )}
 
         {activeTab === 'state' && (
@@ -565,11 +568,12 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
             turn={room.turn}
             storySummary={room.storySummary || ''}
             room={room}
+            appSettings={appSettings}
           />
         )}
 
         {activeTab === 'quests' && (
-          <QuestTab quests={room.quests || []} />
+          <QuestTab quests={room.quests || []} appSettings={appSettings} />
         )}
 
         {activeTab === 'chat' && (
@@ -577,29 +581,47 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
             {room.status === 'lobby' ? (
               <div className="flex-1 overflow-y-auto p-4">
                 <div className="flex flex-col items-center justify-center py-12 text-center space-y-8">
-                  <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center border border-neutral-800">
+                  <div className={cn(
+                    "w-20 h-20 rounded-full flex items-center justify-center border",
+                    appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+                  )}>
                     <Users size={40} className="text-neutral-500" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white mb-3 font-display">Ожидание в лобби</h2>
-                    <p className="text-neutral-400 text-base">
-                      Код комнаты: <span className="font-mono text-white bg-neutral-800 px-3 py-1.5 rounded-lg mx-1">{roomId}</span>
+                    <h2 className={cn(
+                      "text-2xl font-bold mb-3 font-display",
+                      appSettings?.theme === 'light' ? "text-neutral-900" : "text-white"
+                    )}>Ожидание в лобби</h2>
+                    <p className={cn(
+                      "text-base",
+                      appSettings?.theme === 'light' ? "text-neutral-500" : "text-neutral-400"
+                    )}>
+                      Код комнаты: <span className={cn(
+                        "font-mono px-3 py-1.5 rounded-lg mx-1",
+                        appSettings?.theme === 'light' ? "text-neutral-900 bg-neutral-200" : "text-white bg-neutral-800"
+                      )}>{roomId}</span>
                     </p>
                   </div>
                   
-                  <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-2xl p-6 text-left">
-                    <h3 className="text-base font-medium text-neutral-300 mb-4">В комнате ({players.length + (players.some(p => p.uid === room.hostId) ? 0 : 1)})</h3>
+                  <div className={cn(
+                    "w-full max-w-sm border rounded-2xl p-6 text-left",
+                    appSettings?.theme === 'light' ? "bg-white border-neutral-200 shadow-sm" : "bg-neutral-900 border-neutral-800"
+                  )}>
+                    <h3 className={cn(
+                      "text-base font-medium mb-4",
+                      appSettings?.theme === 'light' ? "text-neutral-600" : "text-neutral-300"
+                    )}>В комнате ({players.length + (players.some(p => p.uid === room.hostId) ? 0 : 1)})</h3>
                     <div className="space-y-4">
                       {!players.some(p => p.uid === room.hostId) && (
                         <div className="flex items-center justify-between text-base">
                           <div className="flex items-center gap-3 text-neutral-400">
                             <div className="w-2 h-2 rounded-full bg-blue-500" />
-                            <span className="text-neutral-200">Гейм-мастер (Хост)</span>
+                            <span className={appSettings?.theme === 'light' ? "text-neutral-700" : "text-neutral-200"}>Гейм-мастер (Хост)</span>
                           </div>
                           {isHost && !hasJoined && (
                              <button 
                                onClick={() => setShowJoinForm(true)}
-                               className="text-xs bg-orange-600 hover:bg-orange-500 px-3 py-1.5 rounded-lg text-white transition-colors"
+                               className="text-xs bg-orange-600 hover:bg-orange-500 px-3 py-1.5 rounded-lg text-white transition-colors shadow-lg shadow-orange-600/20"
                              >
                                Присоединиться
                              </button>
@@ -609,7 +631,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
                       {players.map(p => (
                         <div key={p.uid} className="flex items-center gap-3 text-base text-neutral-400">
                           <div className="w-2 h-2 rounded-full bg-orange-500" />
-                          <span className="text-neutral-200">{p.name} {p.uid === room.hostId ? '(Хост)' : ''}</span>
+                          <span className={appSettings?.theme === 'light' ? "text-neutral-700" : "text-neutral-200"}>{p.name} {p.uid === room.hostId ? '(Хост)' : ''}</span>
                         </div>
                       ))}
                     </div>
@@ -619,7 +641,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
                     <button
                       onClick={handleStartGame}
                       disabled={players.length === 0}
-                      className="w-full max-w-sm bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-lg"
+                      className="w-full max-w-sm bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 text-lg shadow-xl shadow-orange-600/20"
                     >
                       <Play size={24} />
                       Начать игру
@@ -640,6 +662,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
                 playersCount={players.length}
                 readyPlayersCount={players.filter(p => p.isReady).length}
                 chatSettings={chatSettings}
+                appSettings={appSettings}
               />
             )}
           </div>
@@ -661,11 +684,15 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
           onCommandSelect={handleCommandSelect}
           onSubmit={handleSubmitAction}
           onVoiceInput={handleVoiceInput}
+          appSettings={appSettings}
         />
       )}
 
       {/* Bottom Navigation */}
-      <div className="shrink-0 bg-neutral-900 border-t border-neutral-800 flex items-center justify-around p-3 pb-safe z-20">
+      <div className={cn(
+        "shrink-0 border-t flex items-center justify-around p-3 pb-safe z-20",
+        appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+      )}>
         <button
           onClick={() => setActiveTab('inventory')}
           className={cn(

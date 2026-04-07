@@ -1,7 +1,7 @@
 import React from 'react';
 import { Send, Mic, Loader2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
-import { Player } from '@/src/types';
+import { Player, AppSettings } from '@/src/types';
 
 interface ActionInputProps {
   me: Player | undefined;
@@ -16,6 +16,7 @@ interface ActionInputProps {
   onCommandSelect: (cmd: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   onVoiceInput: () => void;
+  appSettings?: AppSettings;
 }
 
 export default function ActionInput({
@@ -30,11 +31,15 @@ export default function ActionInput({
   onInputChange,
   onCommandSelect,
   onSubmit,
-  onVoiceInput
+  onVoiceInput,
+  appSettings
 }: ActionInputProps) {
   if (isSpectator) {
     return (
-      <div className="shrink-0 p-3 bg-neutral-900 border-t border-neutral-800 text-center text-neutral-500 py-3 text-sm">
+      <div className={cn(
+        "shrink-0 p-3 border-t text-center py-3 text-sm",
+        appSettings?.theme === 'light' ? "bg-white border-neutral-200 text-neutral-500" : "bg-neutral-900 border-neutral-800 text-neutral-500"
+      )}>
         Вы находитесь в режиме наблюдателя.
       </div>
     );
@@ -42,8 +47,14 @@ export default function ActionInput({
 
   if (me?.isReady) {
     return (
-      <div className="shrink-0 p-3 bg-neutral-900 border-t border-neutral-800">
-        <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-3 text-sm flex items-center justify-between">
+      <div className={cn(
+        "shrink-0 p-3 border-t",
+        appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+      )}>
+        <div className={cn(
+          "border rounded-lg p-3 text-sm flex items-center justify-between",
+          appSettings?.theme === 'light' ? "bg-neutral-50 border-neutral-200" : "bg-neutral-800 border-neutral-700"
+        )}>
           <div className="flex items-center gap-3 text-neutral-400 overflow-hidden">
             <Loader2 size={16} className="animate-spin shrink-0" />
             <span className="truncate">{me.action}</span>
@@ -54,15 +65,24 @@ export default function ActionInput({
   }
 
   return (
-    <div className="shrink-0 p-3 bg-neutral-900 border-t border-neutral-800 relative">
+    <div className={cn(
+      "shrink-0 p-3 border-t relative",
+      appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+    )}>
       {showCommands && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 bg-neutral-900 border border-neutral-800 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto z-50">
+        <div className={cn(
+          "absolute bottom-full left-0 right-0 mb-2 border rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto z-50",
+          appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+        )}>
           {filteredCommands.length > 0 ? (
             filteredCommands.map((c, i) => (
               <button
                 key={i}
                 onClick={() => onCommandSelect(c.cmd)}
-                className="w-full text-left px-4 py-3 hover:bg-neutral-800 transition-colors flex flex-col gap-1 border-b border-neutral-800/50 last:border-0"
+                className={cn(
+                  "w-full text-left px-4 py-3 transition-colors flex flex-col gap-1 border-b last:border-0",
+                  appSettings?.theme === 'light' ? "hover:bg-neutral-50 border-neutral-100" : "hover:bg-neutral-800 border-neutral-800/50"
+                )}
               >
                 <span className="text-orange-500 font-mono text-sm">{c.cmd}</span>
                 <span className="text-neutral-400 text-xs">{c.desc}</span>
@@ -80,7 +100,10 @@ export default function ActionInput({
             value={actionInput}
             onChange={onInputChange}
             placeholder={`Что делает ${me?.name}? (введите / для команд)`}
-            className="w-full bg-black border border-neutral-700 rounded-full py-4 pl-5 pr-14 text-base text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none"
+            className={cn(
+              "w-full border rounded-full py-4 pl-5 pr-14 text-base focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none transition-all",
+              appSettings?.theme === 'light' ? "bg-neutral-50 border-neutral-200 text-neutral-900" : "bg-black border border-neutral-700 text-neutral-100"
+            )}
             disabled={isSubmittingAction || isGenerating}
           />
           <button
@@ -88,7 +111,7 @@ export default function ActionInput({
             onClick={onVoiceInput}
             className={cn(
               "absolute right-2 top-1.5 bottom-1.5 aspect-square flex items-center justify-center rounded-full transition-colors",
-              isRecording ? "text-red-500 bg-red-500/10 animate-pulse" : "text-neutral-400 hover:text-white"
+              isRecording ? "text-red-500 bg-red-500/10 animate-pulse" : "text-neutral-400 hover:text-orange-500"
             )}
             disabled={isSubmittingAction || isGenerating}
           >
@@ -98,7 +121,7 @@ export default function ActionInput({
         <button
           type="submit"
           disabled={!actionInput.trim() || isSubmittingAction || isGenerating}
-          className="w-14 h-14 shrink-0 flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-14 h-14 shrink-0 flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-orange-600/20"
         >
           <Send size={24} />
         </button>
