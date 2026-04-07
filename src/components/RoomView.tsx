@@ -63,6 +63,15 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   const hasJoined = !!me;
   const isSpectator = !isHost && !me;
 
+  // Vibration effect for new AI messages
+  useEffect(() => {
+    if (messages.length > 0 && messages[messages.length - 1].role === 'ai' && appSettings?.vibration) {
+      try {
+        navigator.vibrate?.(50);
+      } catch (e) {}
+    }
+  }, [messages.length, appSettings?.vibration]);
+
   // Typing indicator logic
   useEffect(() => {
     if (room?.isGenerating) {

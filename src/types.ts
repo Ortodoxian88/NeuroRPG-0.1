@@ -47,6 +47,10 @@ export interface AppSettings {
   goreLevel: 'low' | 'medium' | 'high';
   theme: 'light' | 'dark' | 'black';
   language: 'ru' | 'en';
+  soundEffects: boolean;
+  vibration: boolean;
+  animations: boolean;
+  performanceMode: boolean;
 }
 
 export interface ChatSettings {

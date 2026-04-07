@@ -11,7 +11,7 @@ import Lobby from '@/src/components/Lobby';
 import RoomView from '@/src/components/RoomView';
 import BestiaryView from '@/src/components/BestiaryView';
 import SettingsView from '@/src/components/SettingsView';
-import { LogOut, BookOpen, Home, DoorOpen, MoreVertical, Settings, Bug, ChevronLeft, X, Send, CheckCircle2, Loader2, Sparkles, Zap, Ghost, Sword, MessageSquarePlus } from 'lucide-react';
+import { LogOut, BookOpen, Home, DoorOpen, MoreVertical, Settings, Bug, X, Send, CheckCircle2, Loader2, Sparkles, Zap, Ghost, Sword, MessageSquarePlus } from 'lucide-react';
 import { UserProfile, AppSettings, ChatSettings } from './types';
 import { cn } from '@/src/lib/utils';
 
@@ -37,7 +37,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : {
       goreLevel: 'medium',
       theme: 'dark',
-      language: 'ru'
+      language: 'ru',
+      soundEffects: true,
+      vibration: true,
+      animations: true,
+      performanceMode: false
     };
   });
 
@@ -321,75 +325,88 @@ export default function App() {
   }
 
   return (
-    <div className="h-[100dvh] bg-black text-neutral-100 font-sans flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-neutral-900">
+    <div className={cn(
+      "h-[100dvh] text-neutral-100 font-sans flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-neutral-900",
+      appSettings.theme === 'black' ? "bg-black" : appSettings.theme === 'light' ? "bg-white text-black" : "bg-neutral-950",
+      !appSettings.animations && "no-animations",
+      appSettings.performanceMode && "performance-mode"
+    )}>
       {isOffline && (
         <div className="bg-red-500 text-white text-[10px] font-bold text-center py-1 z-50 shrink-0 uppercase tracking-widest">
           Автономный режим
         </div>
       )}
-      <header className="shrink-0 border-b border-neutral-900 bg-black/80 backdrop-blur-md p-5 flex justify-between items-center z-30">
-        <div className="flex items-center gap-3">
-          <h1 
-            className="text-2xl font-bold text-white tracking-tight cursor-pointer flex items-center gap-2 font-display" 
-            onClick={() => { setActiveView('main'); setCurrentRoomId(currentRoomId); }}
-          >
-            NeuroRPG
-          </h1>
-          {currentRoomId && activeView === 'main' && (
-            <button 
-              onClick={() => setActiveView('bestiary')} 
-              className="text-orange-500 hover:text-orange-400 flex items-center gap-1 text-sm font-bold uppercase tracking-wider bg-orange-500/10 px-3 py-1.5 rounded-lg transition-colors"
+      {activeView === 'main' && (
+        <header className={cn(
+          "shrink-0 border-b border-neutral-900 backdrop-blur-md p-5 flex justify-between items-center z-30",
+          appSettings.theme === 'light' ? "bg-white/80" : "bg-black/80"
+        )}>
+          <div className="flex items-center gap-3">
+            <h1 
+              className={cn(
+                "text-2xl font-bold tracking-tight cursor-pointer flex items-center gap-2 font-display",
+                appSettings.theme === 'light' ? "text-black" : "text-white"
+              )}
+              onClick={() => { setActiveView('main'); setCurrentRoomId(currentRoomId); }}
             >
-              <BookOpen size={16} /> Бестиарий
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {currentRoomId && activeView === 'main' ? (
-            <>
-              <button
-                onClick={handleMinimizeRoom}
-                className="p-2 text-neutral-400 hover:text-white transition-colors rounded-xl hover:bg-neutral-900"
-                title="Свернуть игру"
+              NeuroRPG
+            </h1>
+            {currentRoomId && activeView === 'main' && (
+              <button 
+                onClick={() => setActiveView('bestiary')} 
+                className="text-orange-500 hover:text-orange-400 flex items-center gap-1 text-sm font-bold uppercase tracking-wider bg-orange-500/10 px-3 py-1.5 rounded-lg transition-colors"
               >
-                <Home size={24} />
+                <BookOpen size={16} /> Бестиарий
               </button>
-              <div className="relative">
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {currentRoomId && activeView === 'main' ? (
+              <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowMoreMenu(!showMoreMenu); }}
+                  onClick={handleMinimizeRoom}
                   className="p-2 text-neutral-400 hover:text-white transition-colors rounded-xl hover:bg-neutral-900"
+                  title="Свернуть игру"
                 >
-                  <MoreVertical size={24} />
+                  <Home size={24} />
                 </button>
-                
-                {showMoreMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50">
-                    <button 
-                      onClick={() => { setActiveView('settings'); setShowMoreMenu(false); }}
-                      className="w-full flex items-center gap-3 px-5 py-4 text-base text-neutral-300 hover:bg-neutral-800 transition-colors"
-                    >
-                      <Settings size={20} /> Настройки
-                    </button>
-                    <button 
-                      onClick={() => { handleLeaveRoom(); setShowMoreMenu(false); }}
-                      className="w-full flex items-center gap-3 px-5 py-4 text-base text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <DoorOpen size={20} /> Покинуть сессию
-                    </button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-             <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest truncate max-w-[80px]">{user.displayName?.split(' ')[0]}</span>
-                <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden">
-                   {user.photoURL ? <img src={user.photoURL} alt="" /> : <span className="text-base">{user.displayName?.[0]}</span>}
+                <div className="relative">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowMoreMenu(!showMoreMenu); }}
+                    className="p-2 text-neutral-400 hover:text-white transition-colors rounded-xl hover:bg-neutral-900"
+                  >
+                    <MoreVertical size={24} />
+                  </button>
+                  
+                  {showMoreMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+                      <button 
+                        onClick={() => { setActiveView('settings'); setShowMoreMenu(false); }}
+                        className="w-full flex items-center gap-3 px-5 py-4 text-base text-neutral-300 hover:bg-neutral-800 transition-colors"
+                      >
+                        <Settings size={20} /> Настройки
+                      </button>
+                      <button 
+                        onClick={() => { handleLeaveRoom(); setShowMoreMenu(false); }}
+                        className="w-full flex items-center gap-3 px-5 py-4 text-base text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <DoorOpen size={20} /> Покинуть сессию
+                      </button>
+                    </div>
+                  )}
                 </div>
-             </div>
-          )}
-        </div>
-      </header>
+              </>
+            ) : (
+               <div className="flex items-center gap-3">
+                  <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest truncate max-w-[80px]">{user.displayName?.split(' ')[0]}</span>
+                  <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center overflow-hidden">
+                     {user.photoURL ? <img src={user.photoURL} alt="" /> : <span className="text-base">{user.displayName?.[0]}</span>}
+                  </div>
+               </div>
+            )}
+          </div>
+        </header>
+      )}
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
         {activeView === 'bestiary' ? (

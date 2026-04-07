@@ -107,6 +107,13 @@ export default function SettingsView({
                   ]}
                 />
               </Section>
+              
+              <Section title="Эффекты и Обратная связь" icon={<Zap size={18} />}>
+                <ToggleField label="Звуковые эффекты" value={appSettings.soundEffects} onChange={(v) => updateApp('soundEffects', v)} />
+                <ToggleField label="Вибрация (Haptic)" value={appSettings.vibration} onChange={(v) => updateApp('vibration', v)} />
+                <ToggleField label="Анимации интерфейса" value={appSettings.animations} onChange={(v) => updateApp('animations', v)} />
+                <ToggleField label="Режим производительности" value={appSettings.performanceMode} onChange={(v) => updateApp('performanceMode', v)} />
+              </Section>
 
               <div className="pt-12 pb-4 flex flex-col items-center justify-center text-neutral-600 space-y-2">
                 <div className="w-12 h-12 rounded-2xl bg-neutral-900 flex items-center justify-center mb-2">

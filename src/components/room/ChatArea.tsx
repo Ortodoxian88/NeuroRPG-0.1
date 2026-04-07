@@ -19,6 +19,39 @@ interface ChatAreaProps {
   chatSettings?: ChatSettings;
 }
 
+const TypewriterContent = ({ content, speed, onComplete }: { content: string, speed: number, onComplete?: () => void }) => {
+  const [displayedContent, setDisplayedContent] = React.useState('');
+  const [isComplete, setIsComplete] = React.useState(false);
+
+  React.useEffect(() => {
+    if (speed === 0) {
+      setDisplayedContent(content);
+      setIsComplete(true);
+      onComplete?.();
+      return;
+    }
+
+    let i = 0;
+    const timer = setInterval(() => {
+      setDisplayedContent(content.slice(0, i + 1));
+      i++;
+      if (i >= content.length) {
+        clearInterval(timer);
+        setIsComplete(true);
+        onComplete?.();
+      }
+    }, speed);
+
+    return () => clearInterval(timer);
+  }, [content, speed]);
+
+  return (
+    <div className="whitespace-pre-wrap">
+      <Markdown>{displayedContent}</Markdown>
+    </div>
+  );
+};
+
 export default function ChatArea({
   messages,
   currentUser,
@@ -95,6 +128,18 @@ export default function ChatArea({
       case 'green': return 'text-green-200';
       default: return 'text-neutral-100';
     }
+  };
+  
+  const highlightContent = (content: string) => {
+    if (!chatSettings?.highlightKeywords) return content;
+    // Simple keyword highlighting (loot, locations, items)
+    const keywords = ['золото', 'меч', 'зелье', 'пещера', 'замок', 'ключ', 'алтарь', 'сундук'];
+    let highlighted = content;
+    keywords.forEach(kw => {
+      const regex = new RegExp(`(${kw})`, 'gi');
+      highlighted = highlighted.replace(regex, '<span class="text-orange-400 font-bold">$1</span>');
+    });
+    return highlighted;
   };
 
   const getBorderStyleClass = () => {
@@ -186,12 +231,15 @@ export default function ChatArea({
 
         if (msg.role === 'player') {
           const isMine = msg.playerUid === currentUser?.uid;
+          const isLast = messages[messages.length - 1]?.id === msg.id;
+          const isFocused = !chatSettings?.focusMode || isLast;
           
           if (msg.isHidden && !isMine && !isHost) {
             return (
               <div key={msg.id} className={cn(
-                "p-3 text-sm text-neutral-500 italic flex items-center gap-2",
-                !isPlain && "bg-neutral-900/30 border border-neutral-800/30 rounded-xl"
+                "p-3 text-sm text-neutral-500 italic flex items-center gap-2 transition-opacity duration-500",
+                !isPlain && "bg-neutral-900/30 border border-neutral-800/30 rounded-xl",
+                !isFocused && "opacity-30 grayscale"
               )}>
                 <span>🔒</span>
                 <span>{msg.playerName} сделал тайное действие</span>
@@ -205,7 +253,9 @@ export default function ChatArea({
               !isPlain && getShadowClass(),
               !isPlain && (isMine ? "bg-orange-900/20 border border-orange-900/30 text-orange-100" : "bg-neutral-800/50 border border-neutral-700/50 text-neutral-200"),
               !isPlain && msg.isHidden && "border-red-500/30 bg-red-900/20",
-              isPlain && "border-b border-neutral-800/50 pb-4"
+              isPlain && "border-b border-neutral-800/50 pb-4",
+              "transition-opacity duration-500",
+              !isFocused && "opacity-30 grayscale"
             )}>
               <div className="text-xs uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-400">
                 {showAvatar && (
@@ -230,7 +280,7 @@ export default function ChatArea({
                 chatSettings?.autoCapitalize && "first-letter:uppercase"
               )}>
                 {chatSettings?.enableMarkdown === false ? (
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightContent(msg.content) }} />
                 ) : (
                   <Markdown>{msg.content}</Markdown>
                 )}
@@ -239,6 +289,9 @@ export default function ChatArea({
           );
         }
         
+        const isLast = messages[messages.length - 1]?.id === msg.id;
+        const isFocused = !chatSettings?.focusMode || isLast;
+
         return (
           <div key={msg.id} className={cn(
             isCompact ? "p-3" : "p-5",
@@ -246,7 +299,9 @@ export default function ChatArea({
             !isPlain && getShadowClass(),
             !isPlain && (msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800" : "bg-neutral-900/50 border border-neutral-800/50"),
             isPlain && "border-b border-neutral-800/50 pb-4",
-            msg.role === 'ai' ? getAiTextColorClass() : "text-neutral-300"
+            msg.role === 'ai' ? getAiTextColorClass() : "text-neutral-300",
+            "transition-opacity duration-500",
+            !isFocused && "opacity-30 grayscale"
           )}>
             <div className="text-xs font-bold uppercase tracking-[0.2em] mb-3 flex items-center gap-2 text-neutral-500 border-b border-neutral-800 pb-2">
               {showAvatar && msg.role === 'ai' && (
@@ -274,8 +329,10 @@ export default function ChatArea({
               "markdown-body prose prose-invert prose-orange max-w-none",
               chatSettings?.autoCapitalize && "first-letter:uppercase"
             )}>
-              {chatSettings?.enableMarkdown === false ? (
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+              {isLast && msg.role === 'ai' && chatSettings?.typewriterSpeed && chatSettings.typewriterSpeed > 0 ? (
+                <TypewriterContent content={msg.content} speed={chatSettings.typewriterSpeed} />
+              ) : chatSettings?.enableMarkdown === false ? (
+                <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightContent(msg.content) }} />
               ) : (
                 <Markdown>{msg.content}</Markdown>
               )}
