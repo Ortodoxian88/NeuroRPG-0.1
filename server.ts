@@ -55,7 +55,7 @@ function getAIKeys(): string[] {
   const additionalKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()).filter(k => k) : [];
   
   const allKeys = primaryKey ? [primaryKey, ...additionalKeys] : additionalKeys;
-  return [...new Set(allKeys)]; // Unique keys
+  return Array.from(new Set(allKeys)); // Unique keys
 }
 
 async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]) {
@@ -81,13 +81,16 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
           delete config.thinkingConfig;
         }
 
-        const response = await ai.getGenerativeModel({
+        const response = await (ai as any).models.generateContent({
           model: modelName,
-          safetySettings: safetySettings,
-          generationConfig: config
-        }).generateContent(prompt);
+          contents: prompt,
+          config: {
+            ...config,
+            safetySettings: safetySettings
+          }
+        });
         
-        const text = response.response.text();
+        const text = response.text;
         
         if (!text) {
           console.warn(`[AI] Model ${modelName} returned no text.`);

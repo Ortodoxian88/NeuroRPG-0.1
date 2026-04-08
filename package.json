@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node dist/server.js",
-    "build": "vite build && tsc server.ts --outDir dist --module ESNext --moduleResolution node --esModuleInterop --skipLibCheck",
+    "build": "vite build && tsc server.ts --outDir dist --target ESNext --module ESNext --moduleResolution node --esModuleInterop --skipLibCheck",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
