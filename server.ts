@@ -50,12 +50,13 @@ const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-function getAIClient(): GoogleGenAI {
+function getAIClient(): any {
   const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!key) {
     throw new Error("GEMINI_API_KEY environment variable is missing. Please check your secrets in AI Studio.");
   }
-  return new GoogleGenAI({ apiKey: key });
+  // Use any to bypass constructor type issues and ensure it works at runtime
+  return new (GoogleGenAI as any)(key);
 }
 
 async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]) {
@@ -74,8 +75,7 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
         delete config.thinkingConfig;
       }
 
-      // Use any cast to bypass TS errors while keeping correct runtime logic
-      const model = (ai as any).getGenerativeModel({ 
+      const model = ai.getGenerativeModel({ 
         model: modelName,
         safetySettings: safetySettings
       });
