@@ -1,520 +1,96 @@
-import express from "express";
-import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type, ThinkingLevel, HarmCategory, HarmBlockThreshold } from '@google/genai';
-import path from "path";
-import admin from 'firebase-admin';
-import fs from 'fs';
-import rateLimit from 'express-rate-limit';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
+import { apiRouter } from './server/routes/api.routes';
+import { checkDatabaseConnection } from './server/database/client';
 import 'dotenv/config';
-import { z } from 'zod';
 
-const gameResponseSchema = z.object({
-  reasoning: z.string(),
-  story: z.string(),
-  worldUpdates: z.string(),
-  factionUpdates: z.record(z.string(), z.string()),
-  hiddenTimersUpdates: z.record(z.string(), z.number()),
-  stateUpdates: z.array(z.object({
-    uid: z.string(),
-    hp: z.number(),
-    mana: z.number(),
-    stress: z.number(),
-    alignment: z.string(),
-    inventory: z.array(z.string()),
-    skills: z.array(z.string()),
-    injuries: z.array(z.string()),
-    statuses: z.array(z.string()),
-    mutations: z.array(z.string()),
-    reputation: z.record(z.string(), z.number()),
-    stats: z.object({
-      speed: z.number(),
-      reaction: z.number(),
-      strength: z.number(),
-      power: z.number(),
-      durability: z.number(),
-      stamina: z.number()
-    })
-  })),
-  wikiCandidates: z.array(z.object({
-    name: z.string(),
-    rawFacts: z.string(),
-    reason: z.string()
-  }))
+console.log('[Server] >>> NEURORPG SERVER STARTING <<<');
+
+const app = express();
+
+// 1. Middlewares
+app.use(cors());
+app.use(express.json({ limit: '1mb' }));
+
+// Добавляем заголовок версии для отладки
+app.use((req, res, next) => {
+  res.setHeader("X-Server-Version", "1.0.2");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
+  next();
 });
 
-async function generateWithValidation(prompt: string, baseConfig: any, attempt = 1): Promise<any> {
-    const maxAttempts = 3;
-    try {
-        const rawResponse = await generateWithFallback(prompt, baseConfig);
-        return gameResponseSchema.parse(JSON.parse(rawResponse));
-    } catch (error) {
-        if (attempt >= maxAttempts) {
-            console.error("All attempts failed. Returning raw response or throwing error.");
-            throw error;
-        }
-        console.warn(`Attempt ${attempt} failed: ${error}. Retrying...`);
-        const retryPrompt = `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ НЕВАЛИДНЫМ: ${error}. ПОЖАЛУЙСТА, ИСПРАВЬ ОШИБКИ И ВЕРНИ ВАЛИДНЫЙ JSON.`;
-        return generateWithValidation(retryPrompt, baseConfig, attempt + 1);
-    }
-}
+// 2. API Роуты
+// Регистрируем ПРЯМО ЗДЕСЬ для максимальной надежности
+app.use('/api', apiRouter);
 
-// Initialize Firebase Admin for token verification
-const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
-if (fs.existsSync(firebaseConfigPath)) {
-  const config = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf8'));
-  admin.initializeApp({
-    projectId: config.projectId
+// Дополнительный проверочный роут прямо в корне app
+app.get('/api/ping', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    version: '1.0.2',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV
   });
-} else {
-  console.warn("firebase-applet-config.json not found, admin not initialized");
-}
-
-const requireAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
-    return;
-  }
-  
-  const token = authHeader.split('Bearer ')[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    (req as any).user = decodedToken;
-    next();
-  } catch (error) {
-    console.error('Error verifying auth token:', error);
-    res.status(401).json({ error: 'Unauthorized: Invalid token' });
-  }
-};
-
-const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // limit each IP to 20 requests per windowMs
-  message: { error: "Too many requests, please try again later." }
 });
 
-const safetySettings = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
+// 3. Статика и Vite (Development vs Production)
+async function setupStatic() {
+  const __dirname = path.resolve();
+  const distPath = path.join(__dirname, 'dist');
 
-function getAIKeys(): string[] {
-  const primaryKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  const additionalKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()).filter(k => k) : [];
-  
-  const allKeys = primaryKey ? [primaryKey, ...additionalKeys] : additionalKeys;
-  return Array.from(new Set(allKeys)); // Unique keys
-}
-
-async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]) {
-  let lastError;
-  const keys = getAIKeys();
-  
-  if (keys.length === 0) {
-    throw new Error("GEMINI_API_KEY environment variable is missing. Please check your secrets in AI Studio.");
-  }
-
-  const modelList = baseConfig.model ? [baseConfig.model, ...models.filter(m => m !== baseConfig.model)] : models;
-
-  for (const key of keys) {
-    const ai = new GoogleGenAI({ apiKey: key });
-    
-    for (const modelName of modelList) {
-      try {
-        console.log(`[AI] Attempting generation with model: ${modelName} (using key: ${key.substring(0, 8)}...)`);
-        const config = { ...baseConfig };
-        delete config.model;
-        
-        if (modelName === "gemini-3.1-flash-lite-preview" && config.thinkingConfig) {
-          delete config.thinkingConfig;
-        }
-
-        const response = await (ai as any).models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            ...config,
-            safetySettings: safetySettings
-          }
-        });
-        
-        const text = response.text;
-        
-        if (!text) {
-          console.warn(`[AI] Model ${modelName} returned no text.`);
-          throw new Error(`AI returned no text.`);
-        }
-        
-        console.log(`[AI] Successfully generated with ${modelName}`);
-        return text;
-      } catch (error: any) {
-        console.warn(`[AI] Model ${modelName} failed with key ${key.substring(0, 8)}...: ${error.message || error}`);
-        lastError = error;
-        
-        // If it's a 429 (Too Many Requests), we should try the next key
-        if (error.message?.includes("429") || error.message?.toLowerCase().includes("too many requests")) {
-          console.log(`[AI] Rate limit hit for key ${key.substring(0, 8)}..., trying next key if available.`);
-          break; // Break the model loop to try the next key
-        }
-        
-        // If it's an invalid key, we should try the next key
-        if (error.message?.includes("API key not valid")) {
-          console.log(`[AI] Invalid key ${key.substring(0, 8)}..., trying next key if available.`);
-          break;
-        }
-
-        // For other errors, we might want to try the next model with the same key
-        continue;
-      }
-    }
-  }
-
-  throw lastError;
-}
-
-// Telegram Reporting logic moved inside startServer
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  app.set('trust proxy', 1);
-  app.use(express.json({ limit: '1mb' }));
-  app.use('/api/', apiLimiter);
-
-  // Fix for Firebase Auth popup Cross-Origin-Opener-Policy issues
-  app.use((req, res, next) => {
-    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-    res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
-    next();
-  });
-
-  // Telegram Reporting
-  app.post('/api/report', apiLimiter, async (req, res) => {
-    const { type, message, userEmail, roomId, turn, version } = req.body;
-    
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-
-    if (!botToken || !chatId) {
-      console.error('Telegram bot credentials missing');
-      return res.status(500).json({ error: 'Reporting service unavailable' });
-    }
-
-    const escapeHtml = (unsafe: string) => {
-      return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    };
-
-    const safeMessage = escapeHtml(message);
-    const safeUser = escapeHtml(userEmail || 'Аноним');
-    const safeType = type.toUpperCase();
-
-    const text = `
-<b>🚀 Новый репорт: ${safeType}</b>
-──────────────────
-<b>От:</b> ${safeUser}
-<b>Комната:</b> ${roomId || 'N/A'}
-<b>Ход:</b> ${turn || 0}
-<b>Версия:</b> ${version || '0.3.0'}
-
-<b>Сообщение:</b>
-<i>${safeMessage}</i>
-    `.trim();
-
-    try {
-      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text,
-          parse_mode: 'HTML'
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Telegram API error: ${response.statusText}`);
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Failed to send report to Telegram:', error);
-      res.status(500).json({ error: 'Failed to send report' });
-    }
-  });
-
-  // API routes FIRST
-  app.post("/api/gemini/join", requireAuth, async (req, res) => {
-    try {
-      const { characterName, characterProfile, roomId } = req.body;
-      const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь, список навыков/способностей и определи его мировоззрение (alignment).
-Имя персонажа: ${characterName}
-Анкета: ${characterProfile}
-
-Верни JSON объект с массивами "inventory" и "skills", а также строку "alignment" (например, "Законопослушный-Добрый", "Хаотично-Злой", "Истинно-Нейтральный"). Названия предметов и навыков должны быть на РУССКОМ языке. Будь краток.`;
-
-      const text = await generateWithValidation(prompt, {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-            skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            alignment: { type: Type.STRING }
-          },
-          required: ["inventory", "skills", "alignment"]
-        }
-      });
-
-      let jsonText = text;
-      const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-      if (match) {
-        jsonText = match[1];
-      }
-      
-      const parsed = JSON.parse(jsonText);
-      
-      // Also post a system message to the room
-      if (roomId) {
-        const db = admin.firestore();
-        await db.collection('rooms').doc(roomId).collection('messages').add({
-          role: 'system',
-          content: `Игрок **${characterName}** присоединился к игре.`,
-          turn: 0,
-          createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-      }
-
-      res.json(parsed);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Failed to generate" });
-    }
-  });
-
-  app.post("/api/gemini/summarize", requireAuth, async (req, res) => {
-    try {
-      const { currentSummary, recentMessages, roomId } = req.body;
-      const uid = (req as any).user.uid;
-      
-      // Verify host
-      const db = admin.firestore();
-      const roomDoc = await db.collection('rooms').doc(roomId).get();
-      if (!roomDoc.exists || roomDoc.data()?.hostId !== uid) {
-        return res.status(403).json({ error: "Only host can summarize" });
-      }
-
-      const prompt = `Ты летописец RPG игры. Твоя задача - обновить краткое содержание сюжета.
-Текущее содержание: ${currentSummary || "Начало приключения."}
-Новые события: ${recentMessages}
-
-Напиши обновленное краткое содержание (не более 3-4 абзацев), сохраняя ключевые события и текущую цель героев. Пиши художественно, но емко.`;
-
-      const aiText = await generateWithValidation(prompt, {
-        model: "gemini-3.1-flash-lite-preview"
-      });
-
-      res.json({ text: aiText });
-    } catch (error) {
-      console.error("Summarize error:", error);
-      res.status(500).json({ error: "Failed to summarize" });
-    }
-  });
-
-  app.post("/api/gemini/generate", requireAuth, async (req, res) => {
-    try {
-      const { playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers, gmTone, difficulty, goreLevel, language } = req.body;
-      
-      const tonePrompt = gmTone === 'grimdark' ? 'Стиль: Мрачное, жестокое фэнтези. Смерть близка, ресурсы скудны, мир враждебен.' :
-                         gmTone === 'horror' ? 'Стиль: Лавкрафтовский ужас. Напряжение, безумие, необъяснимые явления, постоянное чувство опасности.' :
-                         gmTone === 'epic' ? 'Стиль: Эпическая сага. Героические поступки, пафос, великие свершения, магия повсюду.' :
-                         'Стиль: Классическое фэнтези. Сбалансированное приключение с юмором и опасностями.';
-
-      const difficultyPrompt = difficulty === 'hardcore' ? 'Сложность: ХАРДКОР. ИИ должен быть максимально суров, ошибки игроков ведут к фатальным последствиям.' :
-                               difficulty === 'hard' ? 'Сложность: ВЫСОКАЯ. Игроки должны чувствовать вызов, ресурсы ограничены.' :
-                               'Сложность: НОРМАЛЬНАЯ/ЛЕГКАЯ. Сфокусируйся на истории и фане.';
-
-      const gorePrompt = goreLevel === 'high' ? 'Уровень жестокости: ВЫСОКИЙ (R-rating). Описывай ранения, кровь и насилие максимально детально и красочно.' :
-                         goreLevel === 'low' ? 'Уровень жестокости: НИЗКИЙ (PG-13). Избегай детальных описаний крови и насилия, фокусируйся на действии.' :
-                         'Уровень жестокости: СРЕДНИЙ. Умеренные описания сражений без излишней детализации.';
-
-      const langPrompt = language === 'en' ? 'RESPOND STRICTLY IN ENGLISH.' : 'ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ.';
-
-      const modelName = 'gemini-3-flash-preview';
-
-      const prompt = `
-Ты элитный ИИ-Гейм-мастер для многопользовательской текстовой RPG. Твоя цель - реалистично симулировать мир, управлять NPC и реагировать на действия игроков.
-${langPrompt}
-
-[НАСТРОЙКИ СЕССИИ]
-${tonePrompt}
-${difficultyPrompt}
-${gorePrompt}
-
-[КОНТЕКСТ МИРА]
-Текущее состояние мира и экономики: ${worldState || 'Начало игры. Экономика стабильна.'}
-Отношения фракций: ${factions ? JSON.stringify(factions) : '{}'}
-Скрытые таймеры квестов: ${hiddenTimers ? JSON.stringify(hiddenTimers) : '{}'}
-
-[ИГРОКИ В МИРЕ]
-${playersContext}
-
-[НЕДАВНИЙ КОНТЕКСТ ИСТОРИИ]
-${recentMessages}
-
-ТЕКУЩИЙ ХОД: ${turn}
-ТЕКУЩИЕ КВЕСТЫ: ${currentQuests ? JSON.stringify(currentQuests) : '[]'}
-
-[ДЕЙСТВИЯ ИГРОКОВ В ЭТОМ ХОДУ]
-${actionsText}
-
-[МЕХАНИКИ И ПРАВИЛА (СТРОГО СОБЛЮДАТЬ)]
-1. Chain-of-Thought: Сначала напиши свои рассуждения в поле "reasoning". Оцени логику, физику магии, укрытия, вес инвентаря, скрытые броски.
-2. Валидация действий и Анти-метагейминг: Пресекай попытки игроков сделать невозможное (godmode) или использовать знания из реального мира. Описывай провал таких действий органично.
-3. Физика и Синергия: Магия взаимодействует с окружением (вода проводит ток, огонь сжигает дерево). Учитывай позиционирование и укрытия.
-4. Экономика и Инфляция: Цены меняются динамически. Обновляй это в "worldUpdates".
-5. Инвентарь: Учитывай логический вес. Нельзя нести 10 мечей.
-6. Состояния и Травмы: Накладывай эффекты (Кровотечение, Отравление) и перманентные травмы (Шрамы, Хромота) при сильном уроне. Обновляй HP/MP/Стресс в "stateUpdates".
-7. Психологический стресс и Мутации: В страшных ситуациях повышай стресс (0-100). При 100 - психоз. Накладывай скрытые мутации/проклятия. Обновляй это в "stateUpdates".
-8. Мировоззрение и Репутация: Сдвигай мировоззрение (alignment) и репутацию у фракций/NPC в зависимости от поступков.
-9. NPC: NPC могут лгать, обманывать (органично). Генерируй слухи в тавернах. Используй прямую речь от первого лица для важных NPC.
-10. Квесты и Таймеры: Ветвящиеся квесты. Обновляй скрытые таймеры (hiddenTimersUpdates). Если таймер истек - событие происходит.
-11. AI Director и Случайные встречи: Подстраивай сложность. Если скучно - генерируй органичную случайную встречу или загадку.
-12. Моральные дилеммы: Изредка ставь игроков перед сложным выбором без правильного ответа.
-13. Тональность: Анализируй тон чата, но оставайся беспристрастным. Если ситуация критическая, а игроки шутят - мир реагирует серьезно и жестоко.
-14. РАВНОМЕРНОЕ ВНИМАНИЕ: Вовлекай ВСЕХ игроков в сцену. Не фокусируй атаки или события только на одном персонаже, распределяй угрозы и возможности между всей группой.
-15. Википедия (Архивариус): Выявляй УНИКАЛЬНЫЕ, ВАЖНЫЕ или МАГИЧЕСКИЕ сущности/локации/артефакты/фракции. Игнорируй обыденные вещи (собаки, крестьяне, обычные мечи). Если встретилось что-то достойное, добавь это в "wikiCandidates" с кратким набором сырых фактов. Архивариус (другой ИИ) позже напишет об этом подробную статью.
-16. ФИЗИЧЕСКИЕ ПАРАМЕТРЫ: У каждого игрока есть статы (1-20): speed (скорость), reaction (реакция), strength (подъем), power (урон), durability (прочность), stamina (выносливость). Инициализируй их при создании и обновляй при травмах, баффах или тренировках.
-
-[ИНСТРУКЦИИ ПО ФОРМАТУ]
-Описывай происходящее ДЕТАЛЬНО, ГЛУБОКО и ХУДОЖЕСТВЕННО. Используй богатый литературный язык.
-Заканчивай ход интригой или новым вызовом.
-`;
-
-      const aiText = await generateWithValidation(prompt, {
-        model: modelName,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            reasoning: { type: Type.STRING, description: "Скрытые рассуждения ИИ, расчеты, скрытые броски, логика" },
-            story: { type: Type.STRING, description: "Художественный текст ответа Гейм-мастера" },
-            worldUpdates: { type: Type.STRING, description: "Обновленное состояние мира и экономики (для компендиума)" },
-            factionUpdates: { type: Type.OBJECT, description: "Обновленные отношения фракций (Ключ: Название, Значение: Описание)" },
-            hiddenTimersUpdates: { type: Type.OBJECT, description: "Обновленные таймеры (Ключ: Название события, Значение: Ходов осталось)" },
-            stateUpdates: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  uid: { type: Type.STRING },
-                  hp: { type: Type.NUMBER },
-                  mana: { type: Type.NUMBER },
-                  stress: { type: Type.NUMBER },
-                  alignment: { type: Type.STRING },
-                  inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  injuries: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  statuses: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  mutations: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  reputation: { type: Type.OBJECT, description: "Репутация у фракций/NPC (Ключ: Имя, Значение: Число от -100 до 100)" },
-                  stats: {
-                    type: Type.OBJECT,
-                    properties: {
-                      speed: { type: Type.NUMBER },
-                      reaction: { type: Type.NUMBER },
-                      strength: { type: Type.NUMBER },
-                      power: { type: Type.NUMBER },
-                      durability: { type: Type.NUMBER },
-                      stamina: { type: Type.NUMBER }
-                    }
-                  }
-                },
-                required: ["uid"]
-              }
-            },
-            wikiCandidates: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING, description: "Название сущности/объекта/локации" },
-                  rawFacts: { type: Type.STRING, description: "Сырые факты, характеристики, слабости, повадки (для Архивариуса)" },
-                  reason: { type: Type.STRING, description: "Почему это достойно Википедии?" }
-                },
-                required: ["name", "rawFacts", "reason"]
-              },
-              description: "Кандидаты для добавления в Википедию (только уникальные и важные вещи)"
-            },
-            quests: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Актуальный список активных квестов"
-            }
-          },
-          required: ["reasoning", "story", "stateUpdates", "wikiCandidates", "quests"]
-        }
-      });
-
-      let jsonText = aiText;
-      
-      let parsed;
-      try {
-        const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        if (match) {
-          jsonText = match[1];
-        }
-        parsed = JSON.parse(jsonText);
-      } catch (e) {
-        console.error("Failed to parse JSON, attempting fallback extraction", e);
-        // Fallback: try to find the first { and last }
-        const firstBrace = jsonText.indexOf('{');
-        const lastBrace = jsonText.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1) {
-          try {
-            parsed = JSON.parse(jsonText.substring(firstBrace, lastBrace + 1));
-          } catch (innerError) {
-            console.error("Fallback JSON parsing failed", innerError);
-            throw new Error("Failed to parse AI response as JSON");
-          }
-        } else {
-          throw new Error("No JSON object found in AI response");
-        }
-      }
-      
-      res.json(parsed);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: "Failed to generate GM response" });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[Server] Running in DEVELOPMENT mode (Vite)');
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    console.log('[Server] Running in PRODUCTION mode (Static)');
+    console.log(`[Server] Serving static files from: ${distPath}`);
+    
+    // Проверяем наличие папки dist
     app.use(express.static(distPath));
+    
+    // 4. Catch-all (Для SPA навигации) - ВСЕГДА последний
     app.get('*', (req, res) => {
+      // Если это запрос к /api, который не сработал выше - возвращаем 404 JSON, а не HTML
+      if (req.path.startsWith('/api')) {
+        return res.status(404).json({ error: `API route not found: ${req.path}` });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+}
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+// 5. Функция запуска
+async function startServer() {
+  try {
+    console.log('[Server] Checking database connection...');
+    const isDbConnected = await checkDatabaseConnection();
+    
+    if (!isDbConnected) {
+      console.error('[Server] CRITICAL: Could not connect to database.');
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[Server] Exiting due to DB connection failure in production.');
+        process.exit(1);
+      }
+    }
+
+    await setupStatic();
+
+    const PORT = Number(process.env.PORT) || 3000;
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[Server] ✅ Started on port ${PORT}`);
+      console.log(`[Server] Health check: http://localhost:${PORT}/api/health/db`);
+    });
+  } catch (error) {
+    console.error('[Server] Failed to start server:', error);
+    process.exit(1);
+  }
 }
 
 startServer();
