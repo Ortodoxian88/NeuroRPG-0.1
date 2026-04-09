@@ -1,10 +1,18 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { apiRouter } from './server/routes/api.routes';
 import { checkDatabaseConnection } from './server/database/client';
 import 'dotenv/config';
+
+// Global error handlers for better debugging on Render
+process.on('uncaughtException', (err) => {
+  console.error('[Server] CRITICAL: Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 console.log('[Server] >>> NEURORPG SERVER STARTING <<<');
 
@@ -43,6 +51,7 @@ async function setupStatic() {
 
   if (process.env.NODE_ENV !== 'production') {
     console.log('[Server] Running in DEVELOPMENT mode (Vite)');
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
