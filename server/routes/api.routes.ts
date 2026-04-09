@@ -5,7 +5,7 @@ import { sseService } from '../services/sse.service';
 import { messagesRepository } from '../database/repositories/messages.repository';
 import { GoogleGenAI, Type, ThinkingLevel, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { z } from 'zod';
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 
 console.log('[API] Registering routes...');
 
