@@ -79,11 +79,16 @@ async function setupStatic() {
 async function startServer() {
   try {
     console.log('[Server] Checking database connection...');
-    const isDbConnected = await checkDatabaseConnection();
+    let isDbConnected = false;
+    try {
+      isDbConnected = await checkDatabaseConnection();
+    } catch (dbErr) {
+      console.error('[Server] Unexpected error during DB connection check:', dbErr);
+    }
     
     if (!isDbConnected) {
-      console.error('[Server] ❌ CRITICAL: Could not connect to database. API endpoints will fail.');
-      console.error('[Server] Check DATABASE_URL environment variable.');
+      console.error('[Server] ❌ CRITICAL: Database not available. API endpoints will fail.');
+      console.error('[Server] Ensure DATABASE_URL is set correctly in Render dashboard.');
     }
 
     await setupStatic();
