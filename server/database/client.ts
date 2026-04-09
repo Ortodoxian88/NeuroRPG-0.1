@@ -4,8 +4,14 @@ import 'dotenv/config';
 const isProduction = process.env.NODE_ENV === 'production';
 
 // Инициализация пула соединений
+const dbUrl = process.env.DATABASE_URL;
+
+if (!dbUrl) {
+  console.error('[DB] ❌ DATABASE_URL is not defined in environment variables!');
+}
+
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || '',
+  connectionString: dbUrl || '',
   max: 10, // Ограничение Supabase Free Tier
   ssl: isProduction ? { rejectUnauthorized: false } : false,
 });
