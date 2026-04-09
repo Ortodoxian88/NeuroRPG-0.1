@@ -289,7 +289,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
     try {
       const parsed = await api.generateJoin(characterName, characterProfile, (room && room.status === 'playing') ? roomId : undefined);
 
-      const { player } = await api.joinRoom(room.joinCode, {
+      await api.joinRoom(room.joinCode, {
         characterName: characterName.trim(),
         characterProfile: characterProfile.trim(),
         inventory: parsed.inventory || [],
@@ -305,39 +305,6 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
         }
       });
       
-      // Update local state immediately for better UX
-      setPlayers(prev => {
-        if (prev.some(p => p.uid === player.user_id)) return prev;
-        return [...prev, {
-          uid: player.user_id,
-          name: player.character_name,
-          profile: player.character_profile,
-          inventory: player.inventory || [],
-          skills: player.skills || [],
-          hp: player.hp,
-          maxHp: player.hp_max,
-          mana: player.mana,
-          maxMana: player.mana_max,
-          stress: player.stress,
-          alignment: player.alignment,
-          injuries: player.injuries || [],
-          statuses: player.statuses || [],
-          mutations: player.mutations || [],
-          reputation: player.reputation || {},
-          stats: {
-            speed: player.stat_dexterity,
-            reaction: player.stat_intelligence,
-            strength: player.stat_strength,
-            power: player.stat_wisdom,
-            durability: player.stat_constitution,
-            stamina: player.stat_charisma
-          },
-          action: player.current_action || '',
-          isReady: player.is_ready,
-          joinedAt: player.created_at
-        }];
-      });
-
       localStorage.setItem('lastCharacterName', characterName.trim());
       localStorage.setItem('lastCharacterProfile', characterProfile.trim());
     } catch (error) {

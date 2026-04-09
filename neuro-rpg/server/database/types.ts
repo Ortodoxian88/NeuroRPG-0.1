@@ -53,9 +53,6 @@ export interface RoomPlayerRow {
   skills: any;
   statuses: any;
   injuries: any;
-  alignment: string | null;
-  mutations: any;
-  reputation: any;
   current_action: string | null;
   is_ready: boolean;
   is_online: boolean;
@@ -84,9 +81,7 @@ export interface BestiaryRow {
   tags: string[];
   nature: string;
   knowledge_level: number;
-  author_notes: string | null;
   source_room_id: string | null;
-  discovered_by_user_id: string;
   created_at: Date;
   updated_at: Date;
 }

@@ -122,7 +122,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
                       <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded font-bold">
                         {room.id}
                       </span>
-                      {room.host_user_id === auth.currentUser?.uid && (
+                      {room.hostId === auth.currentUser?.uid && (
                         <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded font-bold uppercase tracking-tighter">
                           ГМ
                         </span>
@@ -132,7 +132,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
                       "text-sm line-clamp-2 italic",
                       appSettings.theme === 'light' ? "text-neutral-600" : "text-neutral-400"
                     )}>
-                      "{room.world_settings?.scenario || room.scenario}"
+                      "{room.scenario}"
                     </p>
                   </button>
                 ))}
