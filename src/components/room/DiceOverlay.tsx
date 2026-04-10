@@ -1,57 +1,33 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useEffect, useState } from 'react';
+import { cn } from '../../lib/utils';
+import { Dices } from 'lucide-react';
 
 interface DiceOverlayProps {
-  showDiceRoll: { player: string; value: number } | null;
+  showDiceRoll: { player: string, value: number } | null;
 }
 
 export default function DiceOverlay({ showDiceRoll }: DiceOverlayProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (showDiceRoll) {
+      setVisible(true);
+      const timer = setTimeout(() => setVisible(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showDiceRoll]);
+
+  if (!visible || !showDiceRoll) return null;
+
   return (
-    <AnimatePresence>
-      {showDiceRoll && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center"
-        >
-          <motion.div
-            initial={{ scale: 0.5, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", damping: 12, stiffness: 100 }}
-            className="w-32 h-32 bg-orange-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-orange-600/50 mb-6 relative overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent" />
-            <span className="text-6xl font-bold text-white drop-shadow-md z-10">{showDiceRoll.value}</span>
-          </motion.div>
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="text-center"
-          >
-            {showDiceRoll.value === 20 && (
-              <motion.div 
-                initial={{ scale: 0.8 }}
-                animate={{ scale: 1.1 }}
-                transition={{ repeat: Infinity, repeatType: "reverse", duration: 0.5 }}
-                className="text-yellow-400 font-black text-xl mb-2 uppercase tracking-widest drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]"
-              >
-                Критический успех!
-              </motion.div>
-            )}
-            {showDiceRoll.value === 1 && (
-              <motion.div 
-                className="text-red-500 font-black text-xl mb-2 uppercase tracking-widest drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]"
-              >
-                Критический провал!
-              </motion.div>
-            )}
-            <h3 className="text-2xl font-bold text-white mb-1 font-display">{showDiceRoll.player}</h3>
-            <p className="text-orange-400 text-lg">бросает кубик (d20)</p>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <div className="bg-black/80 text-white px-8 py-6 rounded-2xl shadow-2xl border border-neutral-800 flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-300">
+        <Dices size={48} className="text-orange-500 animate-bounce" />
+        <div className="text-center">
+          <p className="text-neutral-400 text-sm mb-1">{showDiceRoll.player} бросает кубики</p>
+          <p className="text-5xl font-black text-white">{showDiceRoll.value}</p>
+        </div>
+      </div>
+    </div>
   );
 }
