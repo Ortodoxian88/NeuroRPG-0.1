@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, logout } from '../supabase';
 import { AppSettings } from '../types';
 import { cn } from '../lib/utils';
-import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut, Loader2 } from 'lucide-react';
+import { Plus, LogIn, BookOpen, PlayCircle, Bug, Settings, LogOut } from 'lucide-react';
 import { api } from '../services/api';
+import { authService } from '../services/auth';
+import { useAuth } from '../hooks/useAuth';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
@@ -28,15 +29,16 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   const [isCreating, setIsCreating] = useState(false);
   const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const { user } = useAuth();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await authService.logout();
+    window.location.reload();
   };
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+    const loadRooms = async () => {
+      if (!user) return;
       
       try {
         const rooms = await api.getRooms();
@@ -48,23 +50,21 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
       }
     };
 
-    checkUser();
-  }, []);
+    loadRooms();
+  }, [user]);
 
   const handleSwitchRoom = async (roomId: string) => {
     onRoomSelected(roomId);
   };
 
   const handleCreateRoom = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!user) return;
     setIsCreating(true);
     try {
       const room = await api.createRoom(scenario);
       onRoomSelected(room.id);
     } catch (error) {
       console.error("Error creating room", error);
-      alert("Не удалось создать комнату.");
     } finally {
       setIsCreating(false);
     }
@@ -72,20 +72,11 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (joinCode.trim() && session) {
+    if (joinCode.trim() && user) {
       try {
-        // We just navigate to the room view, joining will happen there if needed
-        // But we need to find the room ID by join code first.
-        // For now, we'll just pass the join code to a new state in App.tsx, or we can fetch it here.
-        // Actually, let's just use the join code directly as the room ID in the frontend for now,
-        // and the RoomView will handle the actual joining process.
-        // Wait, the API needs the join code to join.
-        // Let's just pass the join code to App.tsx which will pass it to RoomView.
         onRoomSelected(joinCode.trim().toUpperCase());
       } catch (error) {
         console.error("Error joining room", error);
-        alert("Произошла ошибка при попытке войти в комнату.");
       }
     }
   };

@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { supabase } from '../supabase';
 import { Room, Player, Message, AppSettings, ChatSettings } from '../types';
 import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -7,6 +6,7 @@ import { typingIndicators } from '../lib/indicators';
 import { processWikiCandidates } from '../services/archivist';
 import { api } from '../services/api';
 import { SSEClient } from '../services/sse';
+import { useAuth } from '../hooks/useAuth';
 
 // Subcomponents
 import ChatArea from './room/ChatArea';
@@ -62,12 +62,11 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   const generatingTurnRef = useRef<number | null>(null);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user: authUser, getToken } = useAuth();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null);
-    });
-  }, []);
+    setCurrentUser(authUser);
+  }, [authUser]);
 
   const isHost = Boolean(currentUser && room?.hostId === currentUser.id);
   const me = players.find(p => p.uid === currentUser?.id);
@@ -130,7 +129,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   };
 
   const kickPlayer = async (uid: string) => {
-    if (!isHost || !window.confirm("Вы уверены, что хотите исключить этого игрока?")) return;
+    if (!isHost) return;
     // TODO: Implement kick via API
   };
 
@@ -358,14 +357,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
     if (!isHost || !room) return;
     try {
       await api.sendMessage(roomId, room.scenario, 'system', 0);
-      // Room status will be updated via API or we can add a specific endpoint.
-      // For now, let's assume the first message starts the game, but we need to update room status.
-      // We should probably add an endpoint for starting the game.
-      // Let's just trigger generateAIResponse which will update the turn.
-      // Wait, the host starts the game by sending the scenario.
-      // Let's add a small fetch to update room status.
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = await getToken();
       await fetch(`/api/rooms/${roomId}/start`, {
         method: 'POST',
         headers: {
@@ -426,7 +418,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
   const handleVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert("Ваш браузер не поддерживает распознавание речи.");
+      console.warn("Ваш браузер не поддерживает распознавание речи.");
       return;
     }
 

@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { authService } from './auth';
 
 type EventHandler = (data: any) => void;
 
@@ -16,8 +16,7 @@ export class SSEClient {
     if (this.eventSource) return;
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const token = await authService.getToken();
       if (!token) throw new Error('Not authenticated');
 
       // Note: EventSource doesn't support custom headers natively in browser.
