@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node dist/server.js",
-    "build": "vite build && npx esbuild server.ts --bundle --platform=node --target=node22 --outfile=dist/server.js --format=esm --packages=external",
+    "build": "bash build.sh",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
