@@ -134,85 +134,24 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
 
     const loadInitialData = async () => {
       try {
-        const [roomData, playersData, messagesData] = await Promise.all([
-          api.getRoom(roomId),
-          api.getPlayers(roomId),
-          api.getMessages(roomId)
-        ]);
-        
-        // Map postgres data to our frontend types
-        setRoom({
-          id: roomData.id,
-          joinCode: roomData.join_code,
-          hostId: roomData.host_user_id,
-          scenario: roomData.world_settings?.scenario || '',
-          turn: roomData.turn_number,
-          status: roomData.status,
-          quests: roomData.active_quests || [],
-          storySummary: roomData.story_summary,
-          worldState: roomData.world_settings?.worldState,
-          factions: roomData.world_settings?.factions,
-          hiddenTimers: roomData.world_settings?.hiddenTimers,
-          createdAt: roomData.created_at,
-          isGenerating: roomData.turn_status === 'generating'
-        });
-
-        setPlayers(playersData.map((p: any) => ({
-          uid: p.user_id,
-          name: p.character_name,
-          profile: p.character_profile,
-          inventory: p.inventory || [],
-          skills: p.skills || [],
-          hp: p.hp,
-          maxHp: p.hp_max,
-          mana: p.mana,
-          maxMana: p.mana_max,
-          stress: p.stress,
-          alignment: p.alignment,
-          injuries: p.injuries || [],
-          statuses: p.statuses || [],
-          mutations: p.mutations || [],
-          reputation: p.reputation || {},
-          stats: {
-            speed: p.stat_dexterity,
-            reaction: p.stat_intelligence,
-            strength: p.stat_strength,
-            power: p.stat_wisdom,
-            durability: p.stat_constitution,
-            stamina: p.stat_charisma
-          },
-          action: p.current_action || '',
-          isReady: p.is_ready,
-          joinedAt: p.created_at
-        })));
-
-        setMessages(messagesData.map((m: any) => ({
-          id: m.id,
-          role: m.type === 'system' ? 'system' : m.type === 'ai_response' ? 'ai' : 'player',
-          content: m.content,
-          reasoning: m.metadata?.reasoning,
-          playerName: m.metadata?.playerName,
-          playerUid: m.user_id,
-          isHidden: m.type === 'secret',
-          turn: m.turn_number,
-          createdAt: m.created_at
-        })));
-
-        // Setup SSE
+        // Setup SSE first to avoid race conditions
         sse = new SSEClient(roomId);
         
         sse.on('message.new', (m: any) => {
-          setMessages(prev => [...prev, {
-            id: m.id,
-            role: m.type === 'system' ? 'system' : m.type === 'ai_response' ? 'ai' : 'player',
-            content: m.content,
-            reasoning: m.metadata?.reasoning,
-            playerName: m.metadata?.playerName,
-            playerUid: m.user_id,
-            isHidden: m.type === 'secret',
-            turn: m.turn_number,
-            createdAt: m.created_at
-          }]);
+          setMessages(prev => {
+            if (prev.some(msg => msg.id === m.id)) return prev;
+            return [...prev, {
+              id: m.id,
+              role: m.type === 'system' ? 'system' : m.type === 'ai_response' ? 'ai' : 'player',
+              content: m.content,
+              reasoning: m.metadata?.reasoning,
+              playerName: m.metadata?.playerName,
+              playerUid: m.user_id,
+              isHidden: m.type === 'secret',
+              turn: m.turn_number,
+              createdAt: m.created_at
+            }];
+          });
         });
 
         sse.on('player.joined', (p: any) => {
@@ -258,6 +197,94 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
         });
 
         await sse.connect();
+
+        // Now fetch initial data
+        const [roomData, playersData, messagesData] = await Promise.all([
+          api.getRoom(roomId),
+          api.getPlayers(roomId),
+          api.getMessages(roomId)
+        ]);
+        
+        // Map postgres data to our frontend types
+        setRoom(prev => {
+          return {
+            id: roomData.id,
+            joinCode: roomData.join_code,
+            hostId: roomData.host_user_id,
+            scenario: roomData.world_settings?.scenario || '',
+            turn: roomData.turn_number,
+            status: roomData.status,
+            quests: roomData.active_quests || [],
+            storySummary: roomData.story_summary,
+            worldState: roomData.world_settings?.worldState,
+            factions: roomData.world_settings?.factions,
+            hiddenTimers: roomData.world_settings?.hiddenTimers,
+            createdAt: roomData.created_at,
+            isGenerating: roomData.turn_status === 'generating'
+          };
+        });
+
+        setPlayers(prev => {
+          const fetchedPlayers = playersData.map((p: any) => ({
+            uid: p.user_id,
+            name: p.character_name,
+            profile: p.character_profile,
+            inventory: p.inventory || [],
+            skills: p.skills || [],
+            hp: p.hp,
+            maxHp: p.hp_max,
+            mana: p.mana,
+            maxMana: p.mana_max,
+            stress: p.stress,
+            alignment: p.alignment,
+            injuries: p.injuries || [],
+            statuses: p.statuses || [],
+            mutations: p.mutations || [],
+            reputation: p.reputation || {},
+            stats: {
+              speed: p.stat_dexterity,
+              reaction: p.stat_intelligence,
+              strength: p.stat_strength,
+              power: p.stat_wisdom,
+              durability: p.stat_constitution,
+              stamina: p.stat_charisma
+            },
+            action: p.current_action || '',
+            isReady: p.is_ready,
+            joinedAt: p.created_at
+          }));
+          
+          // Merge with any players that might have joined via SSE during fetch
+          const merged = [...fetchedPlayers];
+          prev.forEach(p => {
+            if (!merged.some(mp => mp.uid === p.uid)) {
+              merged.push(p);
+            }
+          });
+          return merged;
+        });
+
+        setMessages(prev => {
+          const fetchedMessages = messagesData.map((m: any) => ({
+            id: m.id,
+            role: m.type === 'system' ? 'system' : m.type === 'ai_response' ? 'ai' : 'player',
+            content: m.content,
+            reasoning: m.metadata?.reasoning,
+            playerName: m.metadata?.playerName,
+            playerUid: m.user_id,
+            isHidden: m.type === 'secret',
+            turn: m.turn_number,
+            createdAt: m.created_at
+          }));
+          
+          const merged = [...fetchedMessages];
+          prev.forEach(p => {
+            if (!merged.some(m => m.id === p.id)) {
+              merged.push(p);
+            }
+          });
+          return merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        });
 
       } catch (error) {
         console.error("Failed to load room data:", error);

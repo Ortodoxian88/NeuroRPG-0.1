@@ -352,6 +352,13 @@ apiRouter.get('/rooms/:roomId/events', authMiddleware, async (req, res) => {
   const { roomId: roomIdentifier } = req.params;
   const room = await resolveRoom(roomIdentifier);
   if (!room) return res.status(404).json({ error: 'Room not found' });
+  
+  // Security check: Only host or players in the room can subscribe
+  const player = await playersRepository.findByRoomAndUser(room.id, req.user!.id);
+  if (!player && room.host_user_id !== req.user!.id) {
+    return res.status(403).json({ error: 'Not authorized to view this room' });
+  }
+  
   sseService.subscribe(room.id, res);
 });
 

@@ -25,9 +25,18 @@ class SSEService {
   broadcast(roomId: string, event: string, data: any) {
     const clients = this.clients.get(roomId);
     if (clients) {
+      const deadClients: Response[] = [];
       clients.forEach(client => {
-        client.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        try {
+          client.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        } catch (error) {
+          console.error(`[SSE] Error broadcasting to client in room ${roomId}:`, error);
+          deadClients.push(client);
+        }
       });
+      if (deadClients.length > 0) {
+        this.clients.set(roomId, clients.filter(c => !deadClients.includes(c)));
+      }
     }
   }
 }
