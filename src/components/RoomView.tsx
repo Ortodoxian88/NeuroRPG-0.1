@@ -170,8 +170,8 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
         });
 
         sse.on('player.joined', (p: any) => {
-          setPlayers(prev => [...prev.filter(existing => existing.uid !== p.user_id), {
-            uid: p.user_id,
+          setPlayers(prev => [...prev.filter(existing => existing.uid !== (p.external_user_id || p.user_id)), {
+            uid: p.external_user_id || p.user_id,
             name: p.character_name,
             profile: p.character_profile,
             inventory: p.inventory || [],
@@ -188,7 +188,7 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
         });
 
         sse.on('player.updated', (p: any) => {
-          setPlayers(prev => prev.map(existing => existing.uid === p.user_id ? {
+          setPlayers(prev => prev.map(existing => existing.uid === (p.external_user_id || p.user_id) ? {
             ...existing,
             action: p.current_action || '',
             isReady: p.is_ready,
@@ -225,7 +225,7 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
           return {
             id: roomData.id,
             joinCode: roomData.join_code,
-            hostId: roomData.host_user_id,
+            hostId: roomData.external_host_id || roomData.host_user_id,
             scenario: roomData.world_settings?.scenario || '',
             turn: roomData.turn_number,
             status: roomData.status,
@@ -241,7 +241,7 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
 
         setPlayers(prev => {
           const fetchedPlayers = playersData.map((p: any) => ({
-            uid: p.user_id,
+            uid: p.external_user_id || p.user_id,
             name: p.character_name,
             profile: p.character_profile,
             inventory: p.inventory || [],
@@ -349,9 +349,10 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
       
       // Update local state immediately for better UX
       setPlayers(prev => {
-        if (prev.some(p => p.uid === player.user_id)) return prev;
+        const pUid = player.external_user_id || player.user_id;
+        if (prev.some(p => p.uid === pUid)) return prev;
         return [...prev, {
-          uid: player.user_id,
+          uid: pUid,
           name: player.character_name,
           profile: player.character_profile,
           inventory: player.inventory || [],

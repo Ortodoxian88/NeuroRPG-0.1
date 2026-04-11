@@ -15,17 +15,31 @@ export const roomsRepository = {
       VALUES ($1, $2, 'lobby', 0, 'waiting', '', $3, '[]', NOW(), NOW())
       RETURNING *;
     `;
-    const res = await query<RoomRow>(sql, [hostUserId, joinCode, JSON.stringify(worldSettings || {})]);
-    return res.rows[0];
+    const res = await query<any>(sql, [hostUserId, joinCode, JSON.stringify(worldSettings || {})]);
+    
+    // Fetch with external_host_id
+    return this.findById(res.rows[0].id);
   },
 
-  async findById(id: string): Promise<RoomRow | null> {
-    const res = await query<RoomRow>('SELECT * FROM rooms WHERE id = $1::uuid', [id]);
+  async findById(id: string): Promise<any | null> {
+    const sql = `
+      SELECT r.*, u.google_id as external_host_id
+      FROM rooms r
+      JOIN users u ON r.host_user_id = u.id
+      WHERE r.id = $1::uuid
+    `;
+    const res = await query<any>(sql, [id]);
     return res.rows[0] || null;
   },
 
-  async findByJoinCode(joinCode: string): Promise<RoomRow | null> {
-    const res = await query<RoomRow>('SELECT * FROM rooms WHERE join_code = $1', [joinCode]);
+  async findByJoinCode(joinCode: string): Promise<any | null> {
+    const sql = `
+      SELECT r.*, u.google_id as external_host_id
+      FROM rooms r
+      JOIN users u ON r.host_user_id = u.id
+      WHERE r.join_code = $1
+    `;
+    const res = await query<any>(sql, [joinCode]);
     return res.rows[0] || null;
   },
 
