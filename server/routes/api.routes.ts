@@ -170,7 +170,7 @@ apiRouter.post('/rooms', authMiddleware, async (req, res) => {
     const room = await roomsRepository.createRoom(req.user!.id, { scenario });
     res.status(201).json(room);
   } catch (error) {
-    console.error('[API] Create room error:', error);
+    console.error('[API] Error in POST /rooms:', error);
     res.status(500).json({ error: 'Failed to create room' });
   }
 });
@@ -188,6 +188,7 @@ apiRouter.get('/rooms', authMiddleware, async (req, res) => {
     );
     res.json(result.rows);
   } catch (error) {
+    console.error('[API] Error in GET /rooms:', error);
     res.status(500).json({ error: 'Failed to fetch rooms' });
   }
 });
@@ -198,6 +199,7 @@ apiRouter.get('/rooms/:roomId', authMiddleware, async (req, res) => {
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.json(room);
   } catch (error) {
+    console.error(`[API] Error in GET /rooms/${req.params.roomId}:`, error);
     res.status(500).json({ error: 'Failed to fetch room' });
   }
 });
@@ -215,6 +217,7 @@ apiRouter.post('/rooms/:roomId/start', authMiddleware, async (req, res) => {
     sseService.broadcast(roomId, 'room.updated', { ...room, status: 'playing', turn_number: 1 });
     res.json({ success: true });
   } catch (error) {
+    console.error(`[API] Error in POST /rooms/${req.params.roomId}/start:`, error);
     res.status(500).json({ error: 'Failed to start room' });
   }
 });
@@ -265,7 +268,7 @@ apiRouter.post('/rooms/join', authMiddleware, async (req, res) => {
     
     res.json({ room, player });
   } catch (error) {
-    console.error('[API] Join room error:', error);
+    console.error('[API] Error in POST /rooms/join:', error);
     res.status(500).json({ error: 'Failed to join room' });
   }
 });
@@ -279,6 +282,7 @@ apiRouter.get('/rooms/:roomId/players', authMiddleware, async (req, res) => {
     const players = await playersRepository.findByRoom(room.id);
     res.json(players);
   } catch (error) {
+    console.error(`[API] Error in GET /rooms/${req.params.roomId}/players:`, error);
     res.status(500).json({ error: 'Failed to fetch players' });
   }
 });
@@ -301,6 +305,7 @@ apiRouter.post('/rooms/:roomId/players/action', authMiddleware, async (req, res)
     
     res.json(updatedPlayer);
   } catch (error) {
+    console.error(`[API] Error in POST /rooms/${req.params.roomId}/players/action:`, error);
     res.status(500).json({ error: 'Failed to submit action' });
   }
 });
@@ -323,6 +328,7 @@ apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res)
     
     res.json(updatedPlayer);
   } catch (error) {
+    console.error(`[API] Error in POST /rooms/${req.params.roomId}/players/update:`, error);
     res.status(500).json({ error: 'Failed to update player' });
   }
 });
@@ -344,6 +350,7 @@ apiRouter.get('/bestiary', authMiddleware, async (req, res) => {
     const entries = await bestiaryRepository.search(String(search), category ? String(category) : undefined);
     res.json(entries);
   } catch (error) {
+    console.error('[API] Error in GET /bestiary:', error);
     res.status(500).json({ error: 'Failed to fetch bestiary' });
   }
 });
@@ -649,6 +656,7 @@ apiRouter.get('/rooms/:roomId/messages', authMiddleware, async (req, res) => {
     const messages = await messagesRepository.findByRoom(room.id, Number(limit), Number(offset));
     res.json(messages);
   } catch (error) {
+    console.error(`[API] Error in GET /rooms/${req.params.roomId}/messages:`, error);
     res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
