@@ -164,6 +164,18 @@ apiRouter.post('/report', async (req, res) => {
 
 // --- ROOMS API ---
 
+async function resolveRoom(identifier: string) {
+  // Try finding by join_code first
+  let room = await roomsRepository.findByJoinCode(identifier);
+  if (!room) {
+    // If it's a valid UUID, try finding by ID
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier)) {
+      room = await roomsRepository.findById(identifier);
+    }
+  }
+  return room;
+}
+
 apiRouter.post('/rooms', authMiddleware, async (req, res) => {
   try {
     const { scenario } = req.body;
@@ -195,7 +207,7 @@ apiRouter.get('/rooms', authMiddleware, async (req, res) => {
 
 apiRouter.get('/rooms/:roomId', authMiddleware, async (req, res) => {
   try {
-    const room = await roomsRepository.findById(req.params.roomId);
+    const room = await resolveRoom(req.params.roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.json(room);
   } catch (error) {
@@ -206,15 +218,15 @@ apiRouter.get('/rooms/:roomId', authMiddleware, async (req, res) => {
 
 apiRouter.post('/rooms/:roomId/start', authMiddleware, async (req, res) => {
   try {
-    const { roomId } = req.params;
-    const room = await roomsRepository.findById(roomId);
+    const { roomId: roomIdentifier } = req.params;
+    const room = await resolveRoom(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     if (room.host_user_id !== req.user!.id) return res.status(403).json({ error: 'Only host can start' });
     
-    await roomsRepository.updateStatus(roomId, 'playing');
-    await roomsRepository.updateTurn(roomId, 1, 'waiting', '');
+    await roomsRepository.updateStatus(room.id, 'playing');
+    await roomsRepository.updateTurn(room.id, 1, 'waiting', '');
     
-    sseService.broadcast(roomId, 'room.updated', { ...room, status: 'playing', turn_number: 1 });
+    sseService.broadcast(room.id, 'room.updated', { ...room, status: 'playing', turn_number: 1 });
     res.json({ success: true });
   } catch (error) {
     console.error(`[API] Error in POST /rooms/${req.params.roomId}/start:`, error);
@@ -226,14 +238,7 @@ apiRouter.post('/rooms/join', authMiddleware, async (req, res) => {
   try {
     const { joinCode, characterName, characterProfile, stats, inventory, skills, alignment } = req.body;
     
-    // Try finding by join_code first, then by ID
-    let room = await roomsRepository.findByJoinCode(joinCode);
-    if (!room) {
-      // If it's a valid UUID, try finding by ID
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(joinCode)) {
-        room = await roomsRepository.findById(joinCode);
-      }
-    }
+    const room = await resolveRoom(joinCode);
     
     if (!room) return res.status(404).json({ error: 'Room not found or invalid code' });
     
@@ -285,7 +290,7 @@ apiRouter.post('/rooms/join', authMiddleware, async (req, res) => {
 
 apiRouter.get('/rooms/:roomId/players', authMiddleware, async (req, res) => {
   try {
-    const room = await roomsRepository.findById(req.params.roomId);
+    const room = await resolveRoom(req.params.roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     const players = await playersRepository.findByRoom(room.id);
     res.json(players);
@@ -300,7 +305,7 @@ apiRouter.post('/rooms/:roomId/players/action', authMiddleware, async (req, res)
     const { action, isHidden } = req.body;
     const { roomId: roomIdentifier } = req.params;
     
-    const room = await roomsRepository.findById(roomIdentifier);
+    const room = await resolveRoom(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     const player = await playersRepository.findByRoomAndUser(room.id, req.user!.id);
@@ -323,7 +328,7 @@ apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res)
     const { roomId: roomIdentifier } = req.params;
     const updates = req.body;
     
-    const room = await roomsRepository.findById(roomIdentifier);
+    const room = await resolveRoom(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     const player = await playersRepository.findByRoomAndUser(room.id, req.user!.id);
@@ -345,7 +350,7 @@ apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res)
 
 apiRouter.get('/rooms/:roomId/events', authMiddleware, async (req, res) => {
   const { roomId: roomIdentifier } = req.params;
-  const room = await roomsRepository.findById(roomIdentifier);
+  const room = await resolveRoom(roomIdentifier);
   if (!room) return res.status(404).json({ error: 'Room not found' });
   sseService.subscribe(room.id, res);
 });
@@ -658,7 +663,7 @@ apiRouter.get('/rooms/:roomId/messages', authMiddleware, async (req, res) => {
     const { roomId: roomIdentifier } = req.params;
     const { limit = 50, offset = 0 } = req.query;
 
-    const room = await roomsRepository.findById(roomIdentifier);
+    const room = await resolveRoom(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     const messages = await messagesRepository.findByRoom(room.id, Number(limit), Number(offset));
@@ -676,7 +681,7 @@ apiRouter.post('/rooms/:roomId/messages', authMiddleware, async (req, res) => {
     const validTypes = ['player_action', 'ai_response', 'dice_roll', 'system', 'secret'];
     const messageType = validTypes.includes(type) ? type : 'system';
 
-    const room = await roomsRepository.findById(roomIdentifier);
+    const room = await resolveRoom(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
     const message = await messagesRepository.create({

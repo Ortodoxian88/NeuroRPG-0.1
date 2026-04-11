@@ -18,6 +18,7 @@ import { DiceOverlay } from '@/src/components/room/DiceOverlay';
 
 interface RoomViewProps {
   roomId: string;
+  user: any;
   onLeave: () => void;
   onMinimize: () => void;
   onOpenBestiary: () => void;
@@ -35,7 +36,7 @@ const COMMANDS = [
   { cmd: '/eat', desc: 'Съесть/выпить: /eat [предмет]' },
 ];
 
-export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, appSettings, chatSettings }: RoomViewProps) {
+export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBestiary, appSettings, chatSettings }: RoomViewProps) {
   const [room, setRoom] = useState<Room | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -61,16 +62,8 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   
   const generatingTurnRef = useRef<number | null>(null);
   
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(session?.user ?? null);
-    });
-  }, []);
-
-  const isHost = Boolean(currentUser && room?.hostId === currentUser.id);
-  const me = players.find(p => p.uid === currentUser?.id);
+  const isHost = Boolean(user && room?.hostId === user.id);
+  const me = players.find(p => p.uid === user?.id);
   const hasJoined = !!me;
   const isSpectator = !isHost && !me;
 
@@ -290,7 +283,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !characterName.trim() || !characterProfile.trim() || !room) return;
+    if (!user || !characterName.trim() || !characterProfile.trim() || !room) return;
     
     setIsJoining(true);
     try {
@@ -347,8 +340,10 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
       localStorage.setItem('lastCharacterName', characterName.trim());
       localStorage.setItem('lastCharacterProfile', characterProfile.trim());
+      setShowJoinForm(false);
     } catch (error) {
       console.error("Error joining room", error);
+      alert("Не удалось присоединиться к комнате. Попробуйте еще раз.");
     } finally {
       setIsJoining(false);
     }
@@ -396,7 +391,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
   const handleSubmitAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !actionInput.trim() || !me || me.isReady) return;
+    if (!user || !actionInput.trim() || !me || me.isReady) return;
     
     let input = actionInput.trim();
     let isHidden = false;
@@ -492,7 +487,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
       const wikiCandidates = data.wikiCandidates;
       if (wikiCandidates && Array.isArray(wikiCandidates) && wikiCandidates.length > 0) {
         // Don't await this, let it run in the background
-        processWikiCandidates(wikiCandidates, roomId, currentUser?.id || 'unknown', setArchivistStatus);
+        processWikiCandidates(wikiCandidates, roomId, user?.id || 'unknown', setArchivistStatus);
       }
 
     } catch (error: any) {
@@ -631,6 +626,11 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
                       "text-2xl font-bold mb-3 font-display",
                       appSettings?.theme === 'light' ? "text-neutral-900" : "text-white"
                     )}>Ожидание в лобби</h2>
+                    {hasJoined && (
+                      <div className="bg-green-500/10 border border-green-500/20 text-green-500 text-sm py-2 px-4 rounded-xl mb-4 inline-block animate-in fade-in slide-in-from-top-2">
+                        Вы успешно присоединились! Дождитесь начала игры.
+                      </div>
+                    )}
                     <p className={cn(
                       "text-base",
                       appSettings?.theme === 'light' ? "text-neutral-500" : "text-neutral-400"
@@ -691,7 +691,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
             ) : (
               <ChatArea 
                 messages={messages}
-                currentUser={currentUser}
+                currentUser={user}
                 isGenerating={room.isGenerating || false}
                 typingIndicator={typingIndicator}
                 generationError={generationError}
