@@ -91,6 +91,14 @@ async function startServer() {
       console.error('[Server] Ensure DATABASE_URL is set correctly in Render dashboard.');
     }
 
+    console.log('[Server] Environment Check:', {
+      NODE_ENV: process.env.NODE_ENV,
+      HAS_DB_URL: !!process.env.DATABASE_URL,
+      HAS_GEMINI_KEY: !!process.env.GEMINI_API_KEY,
+      HAS_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+      PORT: process.env.PORT
+    });
+
     await setupStatic();
 
     const PORT = Number(process.env.PORT) || 3000;

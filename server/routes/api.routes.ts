@@ -69,7 +69,7 @@ function getAIKeys(): string[] {
   return Array.from(new Set(allKeys));
 }
 
-async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]) {
+async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-1.5-flash", "gemini-1.5-pro"]) {
   let lastError;
   const keys = getAIKeys();
   if (keys.length === 0) throw new Error("GEMINI_API_KEY is missing.");
@@ -82,7 +82,7 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
       try {
         const config = { ...baseConfig };
         delete config.model;
-        if (modelName === "gemini-3.1-flash-lite-preview" && config.thinkingConfig) delete config.thinkingConfig;
+        if (modelName.includes("lite") && config.thinkingConfig) delete config.thinkingConfig;
 
         const response = await ai.models.generateContent({
           model: modelName,
@@ -416,8 +416,12 @@ apiRouter.post("/gemini/join", authMiddleware, async (req, res) => {
     }
 
     res.json(parsed);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to generate" });
+  } catch (error: any) {
+    console.error('[AI] Join generation error:', error);
+    res.status(500).json({ 
+      error: "Failed to generate", 
+      details: error.message || String(error) 
+    });
   }
 });
 
@@ -433,13 +437,17 @@ apiRouter.post("/gemini/summarize", authMiddleware, async (req, res) => {
 
     const prompt = `Ты летописец RPG игры. Твоя задача - обновить краткое содержание сюжета.\nТекущее содержание: ${currentSummary || "Начало приключения."}\nНовые события: ${recentMessages}\n\nНапиши обновленное краткое содержание (не более 3-4 абзацев).`;
 
-    const aiText = await generateWithFallback(prompt, { model: "gemini-3.1-flash-lite-preview" });
+    const aiText = await generateWithFallback(prompt, { model: "gemini-1.5-flash" });
     
     await query('UPDATE rooms SET story_summary = $1 WHERE id = $2', [aiText, roomId]);
     
     res.json({ text: aiText });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to summarize" });
+  } catch (error: any) {
+    console.error('[AI] Summarize error:', error);
+    res.status(500).json({ 
+      error: "Failed to summarize", 
+      details: error.message || String(error) 
+    });
   }
 });
 
@@ -500,7 +508,7 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
 }`;
 
     const result = await generateWithValidation(prompt, {
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-1.5-flash',
       responseMimeType: "application/json"
     });
 
@@ -574,14 +582,21 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
 
     console.log(`[AI] Transaction committed for room ${roomId}`);
     res.json(result);
-  } catch (error) {
+  } catch (error: any) {
     console.error('[AI] Generation error:', error);
     if (req.body.roomId) {
-      await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['waiting', req.body.roomId]);
-      const updatedRoom = await roomsRepository.findById(req.body.roomId);
-      sseService.broadcast(req.body.roomId, 'room.updated', updatedRoom);
+      try {
+        await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['waiting', req.body.roomId]);
+        const updatedRoom = await roomsRepository.findById(req.body.roomId);
+        sseService.broadcast(req.body.roomId, 'room.updated', updatedRoom);
+      } catch (resetErr) {
+        console.error('[AI] Failed to reset turn_status after error:', resetErr);
+      }
     }
-    res.status(500).json({ error: "Failed to generate GM response" });
+    res.status(500).json({ 
+      error: "Failed to generate GM response", 
+      details: error.message || String(error) 
+    });
   }
 });
 
@@ -695,8 +710,12 @@ ${existingEntry ? `У нас уже есть запись об этом:\n${exis
     }
 
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to process archivist candidates" });
+  } catch (error: any) {
+    console.error('[AI] Archivist error:', error);
+    res.status(500).json({ 
+      error: "Failed to process archivist candidates", 
+      details: error.message || String(error) 
+    });
   }
 });
 

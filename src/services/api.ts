@@ -109,7 +109,10 @@ export const api = {
       headers,
       body: JSON.stringify({ characterName, characterProfile, roomId })
     });
-    if (!res.ok) throw new Error('Failed to generate join');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.details || errorData.error || 'Failed to generate join');
+    }
     return res.json();
   },
 
@@ -120,7 +123,10 @@ export const api = {
       headers,
       body: JSON.stringify({ roomId, ...payload })
     });
-    if (!res.ok) throw new Error('Failed to generate turn');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.details || errorData.error || 'Failed to generate turn');
+    }
     return res.json();
   },
 
@@ -131,7 +137,10 @@ export const api = {
       headers,
       body: JSON.stringify({ roomId, currentSummary, recentMessages })
     });
-    if (!res.ok) throw new Error('Failed to summarize');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.details || errorData.error || 'Failed to summarize');
+    }
     return res.json();
   },
 
@@ -150,7 +159,10 @@ export const api = {
       headers,
       body: JSON.stringify({ roomId, candidates })
     });
-    if (!res.ok) throw new Error('Failed to process archivist candidates');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.details || errorData.error || 'Failed to process archivist candidates');
+    }
     return res.json();
   },
 
